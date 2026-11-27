@@ -1,0 +1,195 @@
+/* GYT redesign of the Alerts screen. Palette, type, header pieces and buttons come from overview-gyt.css (.gyt, .ovhead__*, .gbtn).
+   Left: the list, opening on what needs action. Right: one alert, with one clear next step and the history folded away. */
+
+body:has(.gal) { background: var(--g-canvas); }
+.page.gal { display: flex; flex-direction: column; gap: 16px; height: calc(100dvh - var(--q-header-h) - 52px); min-height: 560px; padding-bottom: 0; }
+.gal .mono { font-family: var(--g-mono); font-variant-numeric: tabular-nums; }
+.gal kbd { font-family: var(--g-mono); font-size: 10.5px; font-weight: 500; padding: 0 5px; border-radius: 4px; border-color: var(--g-light); color: var(--g-grey); background: var(--g-white); }
+.gal__red { color: var(--g-red); font-weight: 500; }
+
+/* Header */
+.gal__head { display: flex; align-items: flex-end; gap: 12px 24px; flex-wrap: wrap; }
+.gal__head h1 { font-size: 26px; line-height: 32px; font-weight: 600; letter-spacing: -.015em; }
+.gal__head .ovhead__actions { margin-left: auto; font-size: 13px; }
+
+/* Body: list and detail side by side */
+.gal__body { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: minmax(380px, 470px) minmax(0, 1fr); gap: 16px; }
+.gal__list, .gal__detail, .gal__hint { min-height: 0; border: 1px solid var(--g-light); border-radius: 8px; background: var(--g-white); }
+.gal__list { display: flex; flex-direction: column; overflow: hidden; }
+
+/* List tools: status tabs, search, criticality and area, order */
+.gal__tools { display: flex; flex-direction: column; gap: 10px; padding: 0 14px 12px; border-bottom: 1px solid var(--g-light); }
+.gal__tabs { display: flex; gap: 0; margin: 0 -14px; padding: 0 4px; border-bottom: 1px solid var(--g-light); overflow-x: auto; scrollbar-width: none; }
+.gal__tabs button { position: relative; flex: 1 1 auto; justify-content: center; display: inline-flex; align-items: center; gap: 6px; height: 46px; padding: 0 6px; border: 0; background: none; color: var(--g-grey); font: inherit; font-size: 13.5px; font-weight: 500; white-space: nowrap; cursor: pointer; }
+.gal__tabs button:hover { color: var(--g-black); }
+.gal__tabs button[aria-selected='true'] { color: var(--g-black); }
+.gal__tabs button[aria-selected='true']::after { content: ''; position: absolute; left: 8px; right: 8px; bottom: -1px; height: 2px; background: var(--g-black); }
+.gal__n { min-width: 22px; height: 18px; padding: 0 6px; border-radius: 9px; background: var(--g-canvas); color: var(--g-grey); font-size: 11px; line-height: 18px; text-align: center; }
+.gal__n.is-red { background: var(--g-red); color: var(--g-white); }
+.gal__search { display: flex; align-items: center; gap: 8px; height: 36px; margin-top: 2px; padding: 0 8px 0 10px; border: 1px solid var(--g-light); border-radius: 6px; color: var(--g-grey-2); }
+.gal__search:focus-within { border-color: var(--g-black); color: var(--g-black); }
+.gal__search input { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: none; font: inherit; font-size: 13.5px; color: var(--g-black); }
+.gal__search button { display: inline-flex; padding: 4px; border: 0; border-radius: 4px; background: none; color: var(--g-grey); cursor: pointer; }
+.gal__filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.gal__filters .msel { flex: 1 1 140px; min-width: 120px; max-width: 200px; }
+.gal .msel__box { border-color: var(--g-light); border-radius: 6px; }
+.gal__prio { display: inline-flex; border: 1px solid var(--g-light); border-radius: 6px; overflow: hidden; }
+.gal__p { width: 36px; height: 30px; border: 0; border-left: 1px solid var(--g-light); background: var(--g-white); color: var(--g-grey); font-family: var(--g-mono); font-size: 12px; font-weight: 500; cursor: pointer; }
+.gal__p:first-child { border-left: 0; }
+.gal__p:hover { color: var(--g-black); background: var(--g-hover); }
+.gal__p[aria-pressed='true'] { background: var(--g-black); color: var(--g-white); }
+.gal__p--P1[aria-pressed='true'] { background: var(--g-red); }
+.gal__sort { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 8px; border: 0; border-radius: 4px; background: none; color: var(--g-grey); font: inherit; font-size: 12.5px; cursor: pointer; white-space: nowrap; }
+.gal__sort:hover { background: var(--g-hover); color: var(--g-black); }
+.gal__active { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.gal__chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 4px 0 8px; border-radius: 4px; background: var(--g-canvas); border: 1px solid var(--g-light); font-size: 12.5px; color: var(--g-black); max-width: 100%; }
+.gal__chipname { color: var(--g-grey); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gal__chip button { display: inline-flex; padding: 3px; border: 0; border-radius: 3px; background: none; color: var(--g-grey); cursor: pointer; }
+.gal__chip button:hover { background: var(--g-light); color: var(--g-black); }
+.gal__clear { padding: 0; border: 0; background: none; font: inherit; font-size: 12.5px; font-weight: 500; color: var(--g-black); text-decoration: underline; text-decoration-color: var(--g-light); text-underline-offset: 3px; cursor: pointer; }
+.gal__clear:hover { text-decoration-color: var(--g-black); }
+
+/* Rows: criticality, what and where, how long ago and what state it is in */
+.gal__rows { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.alrow { display: flex; align-items: flex-start; gap: 12px; width: 100%; padding: 12px 14px; border: 0; border-bottom: 1px solid var(--g-light); background: none; font: inherit; text-align: left; cursor: pointer; }
+.alrow:hover { background: var(--g-hover); }
+.alrow.is-selected { background: var(--g-canvas); box-shadow: inset 3px 0 0 var(--g-black); }
+.alrow:focus-visible { outline: 2px solid var(--g-black); outline-offset: -2px; }
+.alrow .prio { margin-top: 1px; flex: 0 0 auto; }
+.alrow__main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.alrow__title { font-size: 13.5px; line-height: 19px; color: var(--g-black); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.alrow.is-new .alrow__title { font-weight: 600; }
+.alrow__where { font-size: 12.5px; color: var(--g-grey); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.alrow__side { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+.alrow__time { font-size: 12px; color: var(--g-grey); }
+.alrow__state { font-size: 12px; color: var(--g-black); font-weight: 500; white-space: nowrap; }
+.alrow__state.is-red { color: var(--g-red); }
+.alrow__state.is-quiet { color: var(--g-grey-2); font-weight: 400; }
+.gal__empty { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 48px 20px; color: var(--g-grey); font-size: 13px; text-align: center; }
+.gal__empty strong { color: var(--g-black); font-weight: 500; font-size: 14.5px; }
+.gal__foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 14px; border-top: 1px solid var(--g-light); font-size: 12px; color: var(--g-grey); }
+.gal__keys kbd + kbd { margin-left: 2px; }
+
+/* Nothing chosen yet */
+.gal__hint { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: var(--g-grey); font-size: 13px; text-align: center; padding: 24px; }
+.gal__hint svg { color: var(--g-grey-2); }
+.gal__hint strong { color: var(--g-black); font-weight: 500; font-size: 15px; }
+
+/* ── One alert ────────────────────────────────────────────────────────────────────────────────── */
+.gal__detail { display: flex; flex-direction: column; overflow: hidden; }
+.gald__head { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 8px 12px 8px 20px; border-bottom: 1px solid var(--g-light); }
+.gald__back { display: none; align-items: center; gap: 6px; height: 30px; padding: 0 8px 0 4px; border: 0; border-radius: 4px; background: none; font: inherit; font-size: 13px; color: var(--g-black); cursor: pointer; }
+.gald__back:hover { background: var(--g-hover); }
+.gald__state { font-size: 12.5px; font-weight: 500; color: var(--g-black); }
+.gald__state--new, .gald__state--escalated { color: var(--g-red); }
+.gald__state--resolved, .gald__state--false-alarm { color: var(--g-grey); }
+.gald__id { font-size: 12px; color: var(--g-grey); margin-right: 4px; }
+.gald__body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 18px 20px 24px; display: flex; flex-direction: column; gap: 16px; }
+.gald__title { font-size: 20px; line-height: 26px; font-weight: 600; letter-spacing: -.01em; color: var(--g-black); }
+.gald__where { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; margin-top: 4px; font-size: 13px; color: var(--g-grey); }
+.gald__due { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 6px; background: var(--g-canvas); color: var(--g-black); font-size: 13.5px; }
+.gald__due svg { color: var(--g-grey); flex: 0 0 auto; }
+.gald__due.is-late { background: var(--g-red-wash); color: var(--g-red); }
+.gald__due.is-late svg { color: var(--g-red); }
+/* The picture grows to the height the panel has left (title, due line and action bar stay in view) and sits in the middle */
+.gald__media { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: max(420px, calc((100dvh - 500px) * 16 / 9)); justify-self: center; }
+
+/* Picture on the left, the incident's story beside it. On a wide panel the two share exactly the height left between the due
+   line and the action bar, so the panel itself never scrolls: only an open section (What happened, Who was told, Rule) scrolls,
+   and only when its content is longer than the room. Narrow panels stack them and scroll as a page. */
+.gald__body { container-type: inline-size; }
+.gald__split { flex: 1 1 auto; display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 340px); grid-auto-rows: min-content; gap: 12px 20px; align-items: start; }
+.gald__split > .gald__media { grid-column: 1; grid-row: 1 / span 2; }
+.gald__split > .gald__qrec { grid-column: 2; grid-row: 1; }
+.gald__split > .gald__more { grid-column: 2; grid-row: 1 / span 2; border: 1px solid var(--g-light); border-radius: 6px; padding: 0 14px; }
+.gald__split:has(> .gald__qrec) > .gald__more { grid-row: 2; }
+.gald__split > .gald__more details:last-child { border-bottom: 0; }
+@container (min-width: 641px) {
+  .gald__split { container-type: size; min-height: 180px; grid-template-rows: auto minmax(0, 1fr); grid-auto-rows: auto; }
+  .gald__split > .gald__media { max-width: min(100%, calc((100cqh - 46px) * 16 / 9)); }
+  .gald__split > .gald__more { align-self: start; max-height: 100%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+  .gald__split > .gald__more details { flex: 0 0 auto; }
+  .gald__split > .gald__more details[open] { flex: 0 1 auto; min-height: 0; overflow-y: auto; }
+  .gald__split > .gald__more summary { position: sticky; top: 0; z-index: 1; background: var(--g-white); }
+}
+@container (max-width: 640px) {
+  .gald__split { grid-template-columns: minmax(0, 1fr); }
+  .gald__split > .gald__media, .gald__split > .gald__qrec, .gald__split > .gald__more { grid-column: 1; grid-row: auto; }
+  .gald__split > .gald__more { border: 0; border-top: 1px solid var(--g-light); border-radius: 0; padding: 0; }
+}
+.gald__media .camview { border-radius: 6px; }
+.gald__mediabar { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; justify-content: space-between; min-width: 0; }
+.gald__mediabar .seg { min-width: 0; }
+.gald__mediabar .gbtn { flex: 0 0 auto; }
+/* A narrow picture keeps the clip button as an icon, so the controls stay on one line */
+@container (max-width: 900px) { .gald__mediabar .gbtn .gald__cliplabel { display: none; } .gald__mediabar .gbtn { width: 32px; padding: 0; justify-content: center; } }
+.gal .seg button[aria-pressed='true'] { background: var(--g-white); color: var(--g-black); box-shadow: 0 1px 2px color-mix(in srgb, var(--g-black) 12%, transparent); }
+.gal .seg--sm button { height: 26px; padding: 0 10px; font-size: 12.5px; }
+.gald__actions { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 12px 20px; border-top: 1px solid var(--g-light); background: var(--g-white); }
+.gald__main { height: 40px; padding: 0 22px; font-size: 14px; }
+.gald__actions .gbtn:not(.gald__main) { height: 40px; }
+.gald__report { color: var(--g-red); border-color: color-mix(in srgb, var(--g-red) 35%, var(--g-white)); }
+.gald__report:hover { color: var(--g-red); border-color: var(--g-red); background: var(--g-red-wash); }
+.gald__actions .gbtn--quiet { margin-left: auto; }
+.gald__qrec { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--g-light); border-radius: 6px; font-size: 13px; color: var(--g-black); }
+.gald__qrec svg { color: var(--g-grey); flex: 0 0 auto; }
+
+/* The history, folded: open only when you need it */
+.gald__more { border-top: 1px solid var(--g-light); }
+.gald__more details { border-bottom: 1px solid var(--g-light); }
+.gald__more summary { display: flex; align-items: center; gap: 10px; min-height: 46px; list-style: none; cursor: pointer; font-size: 13.5px; font-weight: 500; color: var(--g-black); }
+.gald__more summary::-webkit-details-marker { display: none; }
+.gald__more summary::before { content: ''; width: 6px; height: 6px; margin: 0 4px 0 2px; border-right: 1.5px solid var(--g-grey); border-bottom: 1.5px solid var(--g-grey); transform: rotate(-45deg); transition: transform .15s; }
+.gald__more details[open] summary::before { transform: rotate(45deg); }
+.gald__sum { margin-left: auto; font-size: 12.5px; font-weight: 400; color: var(--g-grey); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
+.gald__more details > :not(summary) { margin: 0 0 14px 18px; }
+.gald__people { list-style: none; padding: 0; display: flex; flex-direction: column; }
+.gald__people li { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--g-light); font-size: 13px; }
+.gald__people li:first-child { border-top: 0; }
+.gald__people svg { color: var(--g-grey); flex: 0 0 auto; }
+.gald__who { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.gald__who .meta { font-size: 12px; color: var(--g-grey); }
+.gald__dstate { min-width: 64px; text-align: right; font-size: 12px; color: var(--g-grey); }
+.gald__dstate.is-read { color: var(--g-black); }
+.gald__dstate.is-red { color: var(--g-red); font-weight: 500; }
+.gal .rulecard { border-color: var(--g-light); border-radius: 6px; font-size: 13px; }
+.gal .rulecard:hover { border-color: var(--g-black); background: var(--g-white); }
+.gal .timeline li::before { border-color: var(--g-grey-2); }
+.gal .timeline li:first-child::before { border-color: var(--g-black); background: var(--g-black); }
+.gal .timeline li::after { background: var(--g-light); }
+.gal .timeline__text { font-size: 13px; }
+
+/* Narrower screens: the list, or one alert with a way back */
+@media (max-width: 1000px) {
+  .gal__body { grid-template-columns: minmax(0, 1fr); }
+  .gal__hint { display: none; }
+  .gal__body.has-detail .gal__list { display: none; }
+  .gald__back { display: inline-flex; }
+  .gald__x { display: none; }
+}
+/* On a phone the page scrolls as a whole (more alerts in view); the action bar stays above the bottom tab bar */
+@media (max-width: 760px) {
+  .page.gal { height: auto; min-height: 0; }
+  .gal__body { display: block; }
+  .gal__list, .gal__detail { overflow: visible; }
+  .gal__rows, .gald__body { overflow: visible; }
+  .gal__keys { display: none; }
+  .gald__actions { position: sticky; bottom: calc(67px + env(safe-area-inset-bottom)); z-index: 5; border-radius: 0 0 8px 8px; box-shadow: 0 -4px 12px color-mix(in srgb, var(--g-black) 6%, transparent); }
+  .gal__filters .gal__sort { margin-left: auto; }
+  .gal__tabs button { flex: 0 0 auto; }
+}
+@media (max-width: 640px) {
+  .gal__head h1 { font-size: 22px; line-height: 28px; }
+  .gald__body { padding: 14px; }
+  .gald__actions { padding: 10px 14px; }
+  .gald__head { padding: 8px 10px; gap: 8px; }
+  .gald__back { white-space: nowrap; }
+  .gald__id { display: none; }
+  .gald__actions .gbtn { flex: 1 1 auto; justify-content: center; }
+  .gald__actions .gbtn--quiet { margin-left: 0; }
+}
+
+/* New-alert pop-ups sit above the action bar here, so they never cover Review or False alarm */
+body:has(.gal) .apop { bottom: 96px; }
+/* On a phone the list itself is the feed of new alerts, and the pop-ups would sit on the action buttons, so they are left out here */
+@media (max-width: 760px) { body:has(.gal) .apop { display: none; } }

@@ -1,0 +1,383 @@
+import { useEffect } from 'react';
+import { detectedText, draftRecord } from '../lib/assist';
+import { duration, hm } from '../lib/time';
+import type { Alert, Camera, Delivery, Policy, Rule, Zone } from '../data/types';
+import type { BackendEvent } from '../lib/backend';
+import {
+  acknowledge,
+  activityStore,
+  addAlert,
+  addDeliveries,
+  alertStore,
+  AREAS_BY_ID,
+  cameraStore,
+  escalate,
+  nextAlertId,
+  peopleFor,
+  policyStore,
+  raiseReport,
+  ruleStore,
+  sessionStore,
+  toast,
+  userName,
+} from './store';
+
+// Stands in for the event service and the notification service. It raises
+// alerts from the live rules, follows the saved notification policy for each
+// alert level (who is told, on which channel, reminders, escalation when no
+// one acknowledges in time) and has supervisors acknowledge some alerts from
+// their phones. Screens react to the stores it writes.
+
+const SEC = 1000;
+const LEADER_KEY = 'gyt.v1.engine.leader';
+const me = Math.random().toString(36).slice(2);
+
+/** Only one window generates events; the others follow through storage events. */
+export function isLeader(now: number) {
+  try {
+    const raw = window.localStorage.getItem(LEADER_KEY);
+    const cur = raw ? (JSON.parse(raw) as { id: string; ts: number }) : null;
+    if (!cur || cur.id === me || now - cur.ts > 4 * SEC) {
+      window.localStorage.setItem(LEADER_KEY, JSON.stringify({ id: me, ts: now }));
+      return true;
+    }
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+const BASE_ACTIVITY: Record<string, number> = { quay: 7, deck: 5, yard: 2, reefer: 2, gate: 6, workshop: 3, hazmat: 1, perimeter: 1 };
+const WEIGHT: Record<string, number> = { P1: 1, P2: 3, P3: 3, P4: 2 };
+const MAX_OPEN = 6;
+
+export function scheduleActive(rule: Rule, now: number) {
+  const h = new Date(now).getHours();
+  if (rule.schedule === 'night') return h >= 18 || h < 6;
+  if (rule.schedule === 'day') return h >= 6 && h < 18;
+  return true;
+}
+
+function centroid(z: Zone): [number, number] {
+  const n = z.points.length;
+  return [z.points.reduce((s, p) => s + p[0], 0) / n, z.points.reduce((s, p) => s + p[1], 0) / n];
+}
+
+function boxFor(rule: Rule, zone: Zone | undefined): [number, number, number, number] {
+  let [x, y] = zone ? centroid(zone) : [30 + Math.random() * 40, 62 + Math.random() * 20];
+  if (zone && rule.condition === 'outside') {
+    const xs = zone.points.map((p) => p[0]);
+    const w = Math.max(...xs) - Math.min(...xs);
+    x = x + (x > 50 ? -1 : 1) * (w * 0.45 + 6);
+    y = Math.min(92, y + 6);
+  }
+  if (zone && zone.kind === 'polygon' && rule.condition !== 'outside') y = Math.min(94, y + 8);
+  if (rule.condition === 'smoke') return [x - 8, y - 26, 16, 26];
+  const h = 7 + y * 0.17;
+  const w = rule.subject === 'vehicle' ? h * 2.4 : h * 0.34;
+  const clampX = Math.min(98 - w, Math.max(2, x - w / 2));
+  return [round(clampX), round(Math.max(2, y - h)), round(w), round(h)];
+}
+const round = (n: number) => Math.round(n * 10) / 10;
+
+function alertText(rule: Rule, zone: Zone | undefined): { title: string; detail: string } {
+  const seen = rule.durationSec + 1 + Math.floor(Math.random() * 5);
+  const zn = zone?.name ?? 'the camera view';
+  const need = rule.durationSec > 0 ? ` (rule: ${rule.durationSec}s or more)` : '';
+  switch (rule.condition) {
+    case 'outside':
+      return { title: rule.name, detail: `Outside ${zn} for ${seen}s${need}` };
+    case 'enters':
+      return { title: rule.name, detail: `Inside ${zn} for ${seen}s${need}` };
+    case 'dwells':
+      return { title: rule.name, detail: `Stayed in ${zn} for ${seen}s${need}` };
+    case 'crosses':
+      return { title: rule.name, detail: `Crossed ${zn}` };
+    case 'no-ppe':
+      return { title: rule.name, detail: `${rule.ppe.map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(' and ')} not seen for ${seen}s${need}` };
+    case 'crowd':
+      return { title: rule.name, detail: `${rule.crowdOver + 1 + Math.floor(Math.random() * 3)} people in ${zn} for ${seen}s` };
+    case 'gathering':
+      return { title: rule.name, detail: `Group of ${(rule.minPeople ?? 5) + Math.floor(Math.random() * 3)} people gathered in ${zn} for ${seen}s` };
+    case 'smoke':
+      return { title: rule.name, detail: `Smoke seen in ${zn} for ${seen}s${need}` };
+    case 'stopped':
+      return { title: rule.name, detail: `Vehicle stopped ${seen}s in ${zn}${need}` };
+    case 'near':
+      return { title: rule.name, detail: `Person close to a ${rule.nearMovingOnly === false ? '' : 'moving '}vehicle in ${zn}` };
+    case 'fewer':
+      return { title: rule.name, detail: `Fewer than ${rule.minPeople ?? 2} people in ${zn} for ${seen}s${need}` };
+    case 'absent':
+      return { title: rule.name, detail: `Nobody in ${zn} for ${seen}s${need}` };
+    case 'wrongway':
+      return { title: rule.name, detail: `Crossed ${zn} the wrong way` };
+    case 'tailgate':
+      return { title: rule.name, detail: `Followed another person through ${zn}` };
+    case 'speeding':
+      return { title: rule.name, detail: `Vehicle over ${rule.speedKmh ?? '?'} km/h in ${zn}` };
+    case 'running':
+      return { title: rule.name, detail: `Person running in ${zn}` };
+    case 'abandoned':
+      return { title: rule.name, detail: `Object left behind in ${zn} for ${seen}s${need}` };
+    case 'phone':
+      return { title: rule.name, detail: `Phone in use in ${zn} for ${seen}s${need}` };
+    case 'down':
+      return { title: rule.name, detail: `Person down in ${zn} for ${seen}s${need}` };
+  }
+}
+
+export function deliveriesFor(policy: Policy, cam: Camera, at: number): Delivery[] {
+  const out: Delivery[] = [];
+  if (policy.channels.includes('wall')) for (const u of peopleFor('Control room operator', cam)) out.push({ at, to: u.id, channel: 'wall', status: 'delivered', reason: 'alert' });
+  for (const role of policy.notify)
+    for (const u of peopleFor(role, cam))
+      for (const ch of policy.channels) if (ch !== 'wall') out.push({ at, to: u.id, channel: ch, status: ch === 'call' ? 'sent' : 'delivered', reason: 'alert' });
+  return out;
+}
+
+/** Alerts raised without announcing them: no pop-up. */
+export const quietAlerts = new Set<string>();
+
+/** What an alert for this rule on this camera would be, built but not stored: no ID is used up and no one is told. The
+ *  rule editor's preview shows it. */
+export function previewFor(rule: Rule, cam: Camera): Alert {
+  return buildAlert(rule, cam, 'PREVIEW');
+}
+
+/** Raises one alert for a rule on a camera (the sample engine). */
+export function raiseFor(rule: Rule, cam: Camera, opts: { quiet?: boolean } = {}): Alert {
+  const alert = buildAlert(rule, cam, nextAlertId());
+  if (opts.quiet) quietAlerts.add(alert.id);
+  addAlert(alert);
+  return alert;
+}
+
+function buildAlert(rule: Rule, cam: Camera, id: string): Alert {
+  const now = Date.now();
+  const zones = cam.zones.filter((z) => rule.zoneIds.includes(z.id));
+  const zone = zones[Math.floor(Math.random() * zones.length)];
+  const policy = policyStore.get().find((p) => p.priority === rule.priority)!;
+  const { title, detail } = alertText(rule, zone);
+  return {
+    id,
+    ruleId: rule.id,
+    cameraId: cam.id,
+    zoneId: zone?.id,
+    priority: rule.priority,
+    title,
+    detail,
+    at: now,
+    state: 'new',
+    box: boxFor(rule, zone),
+    confidence: 0.82 + Math.random() * 0.16,
+    deliveries: deliveriesFor(policy, cam, now),
+    activity: [{ at: now, text: detectedText(rule, zone?.name), actor: 'system' }],
+  };
+}
+
+const SCENE_WORDS = { day: 'daylight', 'night-lit': 'night, floodlit', 'night-dark': 'night, dark', 'night-ir': 'night, infrared camera' } as const;
+
+/** The sentence under an alert's title: what the detection service saw, in the words of the rule's condition. */
+function eventDetail(ev: BackendEvent, rule: Rule, where: string): string {
+  const back = ev.reentry ? ' · came back' : '';
+  const who = ev.subject === 'vehicle' ? 'Vehicle' : 'Person';
+  const seen = `${ev.dwell.toFixed(1)}s`;
+  const need = `(rule: ${rule.durationSec}s or more)`;
+  if (ev.hazard) return `${ev.hazard === 'fire' ? 'Fire' : 'Smoke'} seen in ${ev.frames} of the last 8 analysed frames, in ${where}${back}`;
+  switch (ev.condition ?? rule.condition) {
+    case 'dwells':
+      return `${who} stayed in ${where} for ${seen} ${need}${back}`;
+    case 'outside':
+      return `${who} ${where} for ${seen} ${need} · moved ${Math.round(ev.moved)}px${back}`;
+    case 'crosses':
+      return `${who} crossed ${where}${back}`;
+    case 'crowd':
+      return `${ev.count ?? ev.frames} ${ev.subject === 'vehicle' ? 'vehicles' : 'people'} in ${where}, more than ${ev.limit ?? rule.crowdOver}, for ${seen} ${need}${back}`;
+    case 'gathering':
+      return `Group of ${ev.count ?? ev.frames} people gathered in ${where}, ${ev.limit ?? rule.minPeople} or more, for ${seen} ${need}${back}`;
+    case 'stopped':
+      return `Vehicle stopped in ${where} for ${seen} ${need}${back}`;
+    case 'near':
+      return `Person within ${rule.nearHeights ?? 1} person height${(rule.nearHeights ?? 1) === 1 ? '' : 's'} of a ${rule.nearMovingOnly === false ? '' : 'moving '}vehicle in ${where}${back}`;
+    case 'fewer':
+      return `${ev.count ?? 0} ${(ev.count ?? 0) === 1 ? 'person' : 'people'} in ${where}, fewer than ${ev.limit ?? rule.minPeople}, for ${seen} ${need}${back}`;
+    case 'absent':
+      return `Nobody in ${where} for ${seen} ${need}${back}`;
+    case 'wrongway':
+      return `${who} crossed ${where} the wrong way${back}`;
+    case 'tailgate':
+      return `Person followed another through ${where} ${ev.gap ?? ''}s later${back}`;
+    case 'speeding':
+      return `Vehicle at about ${Math.round(ev.speed ?? 0)} km/h in ${where}, limit ${ev.limit ?? rule.speedKmh}${back}`;
+    case 'running':
+      return `Person running in ${where}, ${ev.speed ?? ''} body heights a second${back}`;
+    case 'abandoned':
+      return `Object left in ${where}, nobody near it for ${seen} ${need}${back}`;
+    case 'phone': {
+      const scene = ev.scene && ev.scene !== 'unknown' ? ` · ${SCENE_WORDS[ev.scene]}` : '';
+      if (ev.level === 'possible') return `Possible phone use in ${where} for ${seen} ${need}: ${ev.cue ?? 'weak sign'} seen, check the clip${scene}${back}`;
+      return `Person using a phone in ${where} for ${seen} ${need}${ev.cue ? ` · ${ev.cue}` : ''}${scene}${back}`;
+    }
+    case 'down':
+      return `Person down in ${where} for ${seen} ${need}${back}`;
+    default:
+      return `Inside ${where} for ${seen} ${need} · moved ${Math.round(ev.moved)}px${back}`;
+  }
+}
+
+/** The zone name the activity line mentions: where the thing was seen, or for "outside" the area it should have stayed in. */
+function activityZone(ev: BackendEvent, rule: Rule, cam: Camera): string | undefined {
+  if ((ev.condition ?? rule.condition) === 'outside') return cam.zones.find((z) => rule.zoneIds.includes(z.id))?.name;
+  return ev.zoneId ? ev.zoneName : undefined;
+}
+
+/** Raises an alert for something the detection service saw on a real camera. */
+export function raiseFromEvent(ev: BackendEvent, rule: Rule, cam: Camera): Alert {
+  // The same thing seen again while its alert is still open is one issue, not a new alert every time: a looping hazard
+  // would otherwise bury the list. The open alert counts the repeats and notes when it was last seen. Fire and smoke are
+  // different things: smoke seen while a fire alert is open is its own alert.
+  const title = ev.hazard ? `${ev.hazard === 'fire' ? 'Fire' : 'Smoke'} detected` : ev.level === 'possible' ? `Possible phone use: please verify · ${rule.name}` : rule.name;
+  // Only within the rule's "don't repeat for" time: when the video loops round and the same thing is seen again after
+  // that, it is a new alert and notifies again.
+  const window = (rule.repeatSec ?? 120) * 900; // a little under the rule's time, as frame times and clocks jitter
+  const open = alertStore.get().find((a) => (a.state === 'new' || a.state === 'escalated') && ev.at - (a.lastAt ?? a.at) < window && a.ruleId === rule.id && a.cameraId === cam.id && (a.zoneId ?? '') === (ev.zoneId ?? '') && a.title === title);
+  if (open) {
+    alertStore.set((list) => list.map((a) => (a.id === open.id ? { ...a, repeats: (a.repeats ?? 0) + 1, lastAt: ev.at } : a)));
+    return open;
+  }
+  const policy = policyStore.get().find((p) => p.priority === rule.priority)!;
+  const where = ev.zoneName || 'the camera view';
+  const alert: Alert = {
+    id: nextAlertId(),
+    eventId: ev.id,
+    ruleId: rule.id,
+    cameraId: cam.id,
+    zoneId: ev.zoneId ?? undefined,
+    priority: rule.priority,
+    title,
+    detail: eventDetail(ev, rule, where),
+    at: ev.at,
+    state: 'new',
+    box: ev.box,
+    confidence: ev.confidence,
+    snapshot: ev.snapshot,
+    clip: ev.clip,
+    deliveries: deliveriesFor(policy, cam, ev.at),
+    activity: [{ at: ev.at, text: detectedText(rule, activityZone(ev, rule, cam), ev.hazard || undefined), actor: 'system' }],
+  };
+  addAlert(alert);
+  return alert;
+}
+
+function generate(now: number) {
+  const cams = cameraStore.get();
+  const camById = new Map(cams.map((c) => [c.id, c]));
+  const openNow = alertStore.get().filter((a) => a.state === 'new' || a.state === 'escalated');
+  // Keep the demo readable: no new alerts while plenty are still waiting.
+  if (openNow.length >= MAX_OPEN) return;
+  const busy = new Set(openNow.map((a) => a.cameraId));
+  const live = ruleStore.get().filter((r) => r.mode === 'live' && r.cameraIds.length && scheduleActive(r, now));
+  const pool = live.flatMap((r) => Array.from({ length: WEIGHT[r.priority] }, () => r));
+  for (let tries = 0; tries < 6 && pool.length; tries++) {
+    const rule = pool[Math.floor(Math.random() * pool.length)];
+    // Real cameras (a link or an uploaded video) get their alerts from the detection service, never from here.
+    const options = rule.cameraIds.map((id) => camById.get(id)).filter((c): c is Camera => !!c && !c.source && c.status !== 'offline' && !busy.has(c.id));
+    if (!options.length) continue;
+    raiseFor(rule, options[Math.floor(Math.random() * options.length)]);
+    return;
+  }
+}
+
+function followUp(now: number) {
+  const policies = new Map(policyStore.get().map((p) => [p.priority, p]));
+  const cams = new Map(cameraStore.get().map((c) => [c.id, c]));
+  const rules = new Map(ruleStore.get().map((r) => [r.id, r]));
+  for (const a of alertStore.get()) {
+    if (a.state !== 'new' && a.state !== 'escalated') continue;
+    const p = policies.get(a.priority);
+    const cam = cams.get(a.cameraId);
+    if (!p || !cam) continue;
+    const age = now - a.at;
+
+    // Escalate when no one acknowledges in time.
+    if (a.state === 'new' && p.escalateTo !== 'none' && age > p.reviewWithinSec * SEC) {
+      const to = peopleFor(p.escalateTo, cam)[0];
+      if (to) {
+        escalate(a.id, to.id, 'system', `not reviewed within ${duration(p.reviewWithinSec * SEC)}`);
+        toast(`${a.id} escalated to ${to.name} (${to.role})`, { tone: 'alert', link: `/alerts/${a.id}` });
+      }
+      continue;
+    }
+
+    // Reminders to the people told first, as many as the level allows.
+    const most = p.remindMax ?? 3;
+    if (p.remindEveryMin > 0) {
+      const reminders = a.deliveries.filter((d) => d.reason === 'reminder');
+      const sent = new Set(reminders.map((d) => d.at)).size;
+      const last = Math.max(a.at, ...reminders.map((d) => d.at));
+      if (sent < most && now - last >= p.remindEveryMin * 60 * SEC) {
+        const to = p.notify.flatMap((role) => peopleFor(role, cam));
+        addDeliveries(
+          a.id,
+          to.map((u) => ({ at: now, to: u.id, channel: 'push' as const, status: 'delivered' as const, reason: 'reminder' as const })),
+          { at: now, actor: 'system', text: `Reminder ${sent + 1} of ${most} sent to ${to.map((u) => u.name).join(', ')}` },
+        );
+      }
+    }
+
+    // A supervisor acknowledges some medium and high alerts from the phone.
+    const n = Number(a.id.replace(/\D/g, ''));
+    if (a.state === 'new' && (a.priority === 'P2' || a.priority === 'P3') && n % 2 === 1 && n > 1042 && age > 150 * SEC) {
+      const sup = peopleFor('Shift supervisor', cam)[0];
+      if (!sup) continue;
+      acknowledge(a.id, sup.id, 'mobile', 'On my way');
+      const rule = rules.get(a.ruleId);
+      if (p.report === 'on-acknowledge' && rule && rule.report !== 'none') {
+        const d = draftRecord(a, cam, rule, AREAS_BY_ID[cam.areaId], hm(a.at));
+        const ref = raiseReport(a.id, { ...d, createdBy: sup.id, source: 'mobile' });
+        toast(`${userName(sup.id)} acknowledged ${a.id} on the phone · ${ref} reported`, { link: `/alerts/${a.id}` });
+      } else toast(`${userName(sup.id)} acknowledged ${a.id} on the phone`, { link: `/alerts/${a.id}` });
+    }
+  }
+}
+
+function updateActivity() {
+  const prev = activityStore.get();
+  const next: Record<string, number> = {};
+  for (const c of cameraStore.get()) {
+    if (c.source) {
+      next[c.id] = prev[c.id] ?? 0; // counted by the detection service (state/bridge.ts)
+      continue;
+    }
+    if (c.status === 'offline') {
+      next[c.id] = 0;
+      continue;
+    }
+    const base = BASE_ACTIVITY[c.areaId] ?? 2;
+    const cur = prev[c.id] ?? Math.round(base * (0.4 + ((c.variant * 37) % 10) / 8));
+    const drift = Math.round((Math.random() - 0.5) * 3);
+    next[c.id] = Math.max(0, Math.min(base * 2 + 4, cur + drift + (cur < base / 2 ? 1 : 0)));
+  }
+  activityStore.set(() => next);
+}
+
+/** Mount once per window. */
+export function useEngine() {
+  useEffect(() => {
+    let nextAt = Date.now() + 15 * SEC;
+    let tick = 0;
+    updateActivity();
+    const t = window.setInterval(() => {
+      const now = Date.now();
+      tick++;
+      if (tick % 4 === 0) updateActivity();
+      if (!sessionStore.get().live || !isLeader(now)) return;
+      if (now >= nextAt) {
+        generate(now);
+        nextAt = now + (45 + Math.random() * 30) * SEC;
+      }
+      followUp(now);
+    }, SEC);
+    return () => window.clearInterval(t);
+  }, []);
+}

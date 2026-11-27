@@ -1,0 +1,148 @@
+"""People and vehicle detection (YOLO11s, this process) and tracking (BoxMOT BoT-SORT with OSNet ReID, a worker process).
+
+The settings are the ones the port-safety project settled on for small, distant pedestrians (docs/FINAL_APPROACH.md in
+barge-intrusion): person class only, a very low confidence floor so nobody is lost, and the rule decides what is
+confident enough to alert on."""
+import struct
+import subprocess
+import threading
+
+import numpy as np
+
+from cctv import config
+from cctv.device import half_precision, pick_device
+
+# Apple's GPU (mps) crashes when two models encode work on it at once from different threads ("A command encoder is already
+# encoding to this command buffer"), so on mps every model shares one lock. CUDA and the CPU keep a lock per model.
+_MPS_LOCK = threading.Lock()
+
+
+def _lock_for(device):
+    return _MPS_LOCK if str(device).startswith('mps') else threading.Lock()
+
+
+class Detector:
+    """One model shared by every camera; calls are serialised because the GPU is shared too."""
+
+    def __init__(self):
+        from ultralytics import YOLO
+        if not config.YOLO_WEIGHTS.exists():
+            raise FileNotFoundError(f'{config.YOLO_WEIGHTS} is missing; set CCTV_YOLO_WEIGHTS or see README.md')
+        self.device = pick_device()
+        self.half = half_precision(self.device)
+        self.model = YOLO(str(config.YOLO_WEIGHTS))
+        self.lock = _lock_for(self.device)
+        self.detect(np.zeros((360, 640, 3), dtype=np.uint8), 640)        # warm up the GPU kernels
+
+    def detect(self, frame, size, classes=(0,), conf=0.05):
+        """Boxes in `frame` as an (n, 6) float32 array: x1 y1 x2 y2 confidence class. `classes` are COCO ids: 0 is a person,
+        2, 3, 5 and 7 are the vehicles. One pass finds all of them, so a camera that watches people and vehicles pays once.
+        `conf` is the lowest confidence kept. The network takes about 10 ms; removing overlapping boxes after it is most of the
+        time of a pass (120 ms at 0.05 in a crowd, 40 ms at 0.3), so a caller that throws away everything below 0.3 anyway
+        (crowd counting, vehicles) says so. Boxes at or above `conf` come out the same whatever it is: a weak box never
+        removes a stronger one."""
+        with self.lock:          # reading results off the GPU is GPU work too: it stays inside the lock (mps crashes otherwise)
+            result = self.model.predict(frame, conf=conf, iou=0.45, imgsz=size, device=self.device, half=self.half,
+                                        classes=list(classes), verbose=False)[0]
+            boxes = result.boxes
+            if len(boxes) == 0:
+                return np.zeros((0, 6), dtype=np.float32)
+            xyxy = boxes.xyxy.cpu().numpy()
+            conf = boxes.conf.cpu().numpy()[:, None]
+            cls = boxes.cls.cpu().numpy()[:, None]
+        return np.concatenate([xyxy, conf, cls], axis=1).astype(np.float32)
+
+
+class FireDetector:
+    """D-Fire YOLOv8n: finds fire and smoke in a frame. No tracking is needed: the fire rule asks whether a class keeps
+    showing up (fire.py), not which flame is which. The detector keeps everything above a low floor; the rule's
+    "sure" setting decides what counts, and the preview shows what did not as a thin grey box."""
+    NAMES = {0: 'smoke', 1: 'fire'}       # class order of the D-Fire checkpoint
+    FLOOR = 0.10
+    SIZE = 960
+
+    def __init__(self):
+        from ultralytics import YOLO
+        if not config.FIRE_WEIGHTS.exists():
+            raise FileNotFoundError(f'{config.FIRE_WEIGHTS} is missing; set CCTV_FIRE_WEIGHTS or see README.md')
+        self.device = pick_device()
+        self.half = half_precision(self.device)
+        self.model = YOLO(str(config.FIRE_WEIGHTS))
+        self.lock = _lock_for(self.device)
+        self.detect(np.zeros((540, 960, 3), dtype=np.uint8))          # warm up the GPU kernels
+
+    def detect(self, frame):
+        """[(class name, confidence, (x1, y1, x2, y2))] with plain floats, so the results can go straight into JSON."""
+        with self.lock:          # results are read off the GPU inside the lock too
+            result = self.model.predict(frame, conf=self.FLOOR, imgsz=self.SIZE, device=self.device, half=self.half, verbose=False)[0]
+            boxes = result.boxes
+            if len(boxes) == 0:
+                return []
+            rows = list(zip(boxes.xyxy.cpu().numpy().tolist(), boxes.conf.cpu().numpy().tolist(), boxes.cls.cpu().numpy().astype(int).tolist()))
+        return [(self.NAMES[cls], float(conf), tuple(float(v) for v in box)) for box, conf, cls in rows if cls in self.NAMES]
+
+
+class PoseDetector:
+    """YOLO11s-pose: the 17 body keypoints of every person in a frame, for the person-down rule. It runs only for cameras that
+    have such a rule, on the people the tracker already found (the runner matches each pose to a track by box overlap)."""
+
+    def __init__(self):
+        from ultralytics import YOLO
+        if not config.POSE_WEIGHTS.exists():
+            raise FileNotFoundError(f'{config.POSE_WEIGHTS} is missing; set CCTV_POSE_WEIGHTS or see README.md')
+        self.device = pick_device(allow_mps=False)       # Ultralytics: pose models misread keypoints on Apple's GPU backend
+        self.half = half_precision(self.device)
+        self.model = YOLO(str(config.POSE_WEIGHTS))
+        self.lock = _lock_for(self.device)
+        self.detect(np.zeros((360, 640, 3), dtype=np.uint8), 640)
+
+    def detect(self, frame, size):
+        """[(box (x1, y1, x2, y2), keypoints 17x3 as x, y, confidence)] for the people in `frame`."""
+        with self.lock:
+            result = self.model.predict(frame, conf=0.25, imgsz=size, device=self.device, half=self.half, verbose=False)[0]
+            if result.keypoints is None or len(result.boxes) == 0:
+                return []
+            boxes = result.boxes.xyxy.cpu().numpy()
+            kps = np.concatenate([result.keypoints.xy.cpu().numpy(), result.keypoints.conf.cpu().numpy()[..., None]], axis=2)
+        return [(tuple(float(v) for v in b), k.astype(float)) for b, k in zip(boxes, kps)]
+
+
+class TrackerClient:
+    """Talks to tracker_worker.py, which runs in the BoxMOT environment. One instance per running camera."""
+
+    def __init__(self):
+        for path in (config.TRACKER_PYTHON, config.REID_WEIGHTS):
+            if not path.exists():
+                raise FileNotFoundError(f'{path} is missing; set CCTV_TRACKER_PYTHON / CCTV_REID_WEIGHTS or see README.md')
+        self.process = subprocess.Popen([str(config.TRACKER_PYTHON), str(config.TRACKER_WORKER), str(config.REID_WEIGHTS)],
+                                        stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+
+    def reset(self, fps):
+        self.process.stdin.write(b'R' + struct.pack('<f', fps))
+        self.process.stdin.flush()
+        if self._read(1) != b'K':
+            raise RuntimeError('tracker worker did not acknowledge reset')
+
+    def update(self, frame, dets):
+        """Tracks as an (m, 8) array: x1 y1 x2 y2 track_id confidence class detection_index."""
+        height, width = frame.shape[:2]
+        dets = np.ascontiguousarray(dets, dtype='<f4').reshape(-1, 6)
+        self.process.stdin.write(b'U' + struct.pack('<iii', height, width, len(dets)) + dets.tobytes())
+        self.process.stdin.write(np.ascontiguousarray(frame).data)
+        self.process.stdin.flush()
+        count = struct.unpack('<i', self._read(4))[0]
+        return np.frombuffer(self._read(count * 32), dtype='<f4').reshape(count, 8)
+
+    def _read(self, count):
+        data = self.process.stdout.read(count)
+        if len(data) != count:
+            raise RuntimeError('tracker worker exited; check the back-end console')
+        return data
+
+    def close(self):
+        try:
+            self.process.stdin.write(b'Q')
+            self.process.stdin.flush()
+            self.process.wait(timeout=3)
+        except Exception:
+            self.process.kill()

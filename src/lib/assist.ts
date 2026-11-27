@@ -1,0 +1,320 @@
+import type { Alert, Area, Camera, Classification, Condition, Ppe, Priority, Report, ReportType, Rule, Schedule, Subject } from '../data/types';
+
+// Stand-ins for an AI assistant service; here they
+// run in the browser so the prototype works offline. Everything they return is
+// shown in blue as a draft, and nothing is saved until a person accepts it.
+
+export const CONDITION_LABEL: Record<Condition, string> = {
+  enters: 'enters',
+  outside: 'moves away from',
+  dwells: 'stays inside',
+  crosses: 'crosses',
+  'no-ppe': 'is inside without PPE',
+  crowd: 'more than N people inside',
+  gathering: 'a group of N or more packed together',
+  smoke: 'smoke or flame seen',
+  stopped: 'vehicle stopped inside',
+  near: 'comes close to a moving vehicle',
+  fewer: 'fewer than N people inside',
+  absent: 'nobody inside',
+  wrongway: 'crosses the wrong way',
+  tailgate: 'follows another through',
+  speeding: 'vehicle over the speed limit',
+  running: 'runs',
+  abandoned: 'object left behind',
+  phone: 'uses a phone',
+  down: 'falls and stays down',
+};
+
+export const SCHEDULE_LABEL: Record<Schedule, string> = {
+  always: 'Always',
+  day: 'Day shift (06:00–18:00)',
+  night: 'Night (18:00–06:00)',
+  'vessel-ops': 'During vessel operations',
+};
+
+/** A short name for a rule of each kind, used when nobody types one: a name, not a sentence ("Crowd restriction", not
+ *  "More than 6 people inside for 30s or more"). */
+export const RULE_NAME: Record<Condition, string> = {
+  enters: 'Restricted area entry',
+  outside: 'Outside the allowed area',
+  dwells: 'Loitering',
+  crosses: 'Line crossing',
+  'no-ppe': 'PPE not worn',
+  crowd: 'Crowd restriction',
+  gathering: 'Crowd gathering',
+  smoke: 'Fire and smoke',
+  stopped: 'Stopped vehicle',
+  near: 'Person near a moving vehicle',
+  fewer: 'Lone worker',
+  absent: 'Post unattended',
+  wrongway: 'Wrong-way crossing',
+  tailgate: 'Tailgating',
+  speeding: 'Speeding',
+  running: 'Running',
+  abandoned: 'Left-behind object',
+  phone: 'Phone use in restricted area',
+  down: 'Person down',
+};
+export const defaultRuleName = (r: Pick<Rule, 'condition' | 'subject'>) =>
+  r.condition === 'crowd' && r.subject === 'vehicle' ? 'Vehicle crowd restriction' : r.condition === 'dwells' && r.subject === 'vehicle' ? 'Vehicle dwell time' : RULE_NAME[r.condition];
+
+export const SUBJECT_LABEL: Record<Subject, string> = { person: 'A person', vehicle: 'A vehicle', any: 'Anything' };
+
+const secs = (n: number) => (n >= 60 && n % 60 === 0 ? `${n / 60}min` : `${n}s`);
+
+/** One sentence for what a rule watches for. */
+export function describeRule(r: Pick<Rule, 'subject' | 'condition' | 'durationSec' | 'ppe' | 'crowdOver'> & Partial<Pick<Rule, 'minPeople' | 'speedKmh'>>, zoneNames: string[]): string {
+  const names = zoneNames.join(' or ');
+  const inZone = names ? `in ${names}` : 'in view';
+  const subj = SUBJECT_LABEL[r.subject];
+  const dur = r.durationSec > 0 ? ` for ${secs(r.durationSec)} or more` : '';
+  const ppe = r.ppe.length ? `a ${r.ppe.join(' or ')}` : 'the required PPE';
+  switch (r.condition) {
+    case 'enters':
+      return names ? `${subj} enters ${names}${dur}` : `${subj} appears in view${dur}`;
+    case 'outside':
+      return `${subj} moves away from ${names || 'the view'}${dur}`;
+    case 'dwells':
+      return `${subj} stays ${inZone}${dur}`;
+    case 'crosses':
+      return `${subj} crosses ${names || 'a line in view'}`;
+    case 'no-ppe':
+      return `${subj} without ${ppe} ${names ? `at ${names}` : 'in view'}${dur}`;
+    case 'crowd':
+      return `More than ${r.crowdOver} people ${inZone}${dur}`;
+    case 'gathering':
+      return `${r.minPeople ?? 5} or more people packed together ${inZone}${dur}`;
+    case 'smoke':
+      return `Smoke or flame ${inZone}${dur}`;
+    case 'stopped':
+      return `A vehicle stopped ${inZone}${dur}`;
+    case 'near':
+      return `A person close to a vehicle ${inZone}`;
+    case 'fewer':
+      return `Fewer than ${r.minPeople ?? 2} people ${inZone}${dur}`;
+    case 'absent':
+      return `Nobody ${inZone}${dur}`;
+    case 'wrongway':
+      return `${subj} crosses ${names || 'a line in view'} the wrong way`;
+    case 'tailgate':
+      return `A second person follows through ${names || 'a line in view'}`;
+    case 'speeding':
+      return `A vehicle over ${r.speedKmh ?? '?'} km/h ${inZone}`;
+    case 'running':
+      return `A person running ${inZone}${dur}`;
+    case 'abandoned':
+      return `An object left behind ${inZone}${dur}`;
+    case 'phone':
+      return `A person using a phone ${inZone}${dur}`;
+    case 'down':
+      return `A person down ${inZone}${dur}`;
+  }
+}
+
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+const DETECTED_WHO: Record<Subject, string> = { person: 'Person', vehicle: 'Vehicle', any: 'Person or vehicle' };
+
+/** The first line of an alert's activity: what the camera saw, e.g. "Smoke detected" or "Person detected in RTG lane". */
+export function detectedText(r: Pick<Rule, 'subject' | 'condition' | 'ppe' | 'fireClasses'> | undefined, zoneName?: string, hazard?: 'fire' | 'smoke'): string {
+  if (hazard) return `${cap(hazard)} detected`;
+  if (!r) return 'Hazard detected';
+  const who = DETECTED_WHO[r.subject];
+  // "Crane exclusion zone" → "the crane exclusion zone"; names that start with an acronym ("RTG lane") keep it.
+  const zone = zoneName && `the ${/^[A-Z]{2}/.test(zoneName) ? zoneName : zoneName.charAt(0).toLowerCase() + zoneName.slice(1)}`;
+  const at = (prep: string) => (zone ? ` ${prep} ${zone}` : '');
+  switch (r.condition) {
+    case 'enters':
+      return `${who} detected${at('in')}`;
+    case 'outside':
+      return zone ? `${who} detected outside ${zone}` : `${who} detected`;
+    case 'dwells':
+      return `${who} detected staying${at('in')}`;
+    case 'crosses':
+      return `${who} detected crossing${zone ? ` ${zone}` : ' a line'}`;
+    case 'no-ppe':
+      return `${who} without ${r.ppe.length ? `a ${r.ppe.join(' or ')}` : 'PPE'} detected${at('at')}`;
+    case 'crowd':
+      return `Crowd detected${at('in')}`;
+    case 'gathering':
+      return `Crowd gathering detected${at('in')}`;
+    case 'smoke':
+      return r.fireClasses === 'fire' ? 'Fire detected' : 'Smoke detected';
+    case 'stopped':
+      return `Stopped vehicle detected${at('on')}`;
+    case 'near':
+      return `Person close to a vehicle${at('in')}`;
+    case 'fewer':
+      return `Too few people${at('in')}`;
+    case 'absent':
+      return `Nobody${at('in')}`;
+    case 'wrongway':
+      return `${who} crossing the wrong way${zone ? ` ${zone}` : ''}`;
+    case 'tailgate':
+      return `Person following another through${zone ? ` ${zone}` : ' a line'}`;
+    case 'speeding':
+      return `Vehicle over the speed limit${at('in')}`;
+    case 'running':
+      return `Person running${at('in')}`;
+    case 'abandoned':
+      return `Object left behind${at('in')}`;
+    case 'phone':
+      return `Person using a phone${at('in')}`;
+    case 'down':
+      return `Person down${at('in')}`;
+  }
+}
+
+/** Alerts raised before activity said what was seen read "Detected by the edge model"; show them the new way. */
+export function activityText(text: string, r: Rule | undefined, zoneName?: string): string {
+  if (!text.startsWith('Detected by the edge model')) return text;
+  return detectedText(r, zoneName, /· fire\b/.test(text) ? 'fire' : /· smoke\b/.test(text) ? 'smoke' : undefined);
+}
+
+export interface RuleDraft {
+  rule: Pick<Rule, 'name' | 'subject' | 'condition' | 'durationSec' | 'ppe' | 'crowdOver' | 'schedule' | 'priority' | 'report' | 'classification' | 'cameraIds' | 'zoneIds'>;
+  understood: string[];
+  assumed: string[];
+}
+
+const AREA_WORDS: [RegExp, string][] = [
+  [/\bdeck|gangway|lashing bridge|vessel\b/, 'deck'],
+  [/\bquay|crane|sts|apron|berth\b/, 'quay'],
+  [/\byard|rtg|block|stack\b/, 'yard'],
+  [/\breefer\b/, 'reefer'],
+  [/\bgate|truck lane|lane\b/, 'gate'],
+  [/\bworkshop|hot work|tyre|wash bay\b/, 'workshop'],
+  [/\bimdg|hazard|dangerous goods|hazmat\b/, 'hazmat'],
+  [/\bfence|perimeter|boundary\b/, 'perimeter'],
+];
+
+const STOP = new Set(['the', 'a', 'an', 'of', 'on', 'in', 'at', 'to', 'zone', 'area', 'from', 'and', 'or']);
+const words = (s: string) => s.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w && !STOP.has(w));
+
+/** Turns a plain-words rule into rule fields, and says what it understood and assumed. */
+export function draftRuleFromText(text: string, cameras: Camera[], areas: Area[]): RuleDraft {
+  const t = ` ${text.toLowerCase()} `;
+  const understood: string[] = [];
+  const assumed: string[] = [];
+
+  let subject: Subject = 'person';
+  if (/\b(vehicle|truck|forklift|car|rtg|tractor|lorry)s?\b/.test(t)) subject = 'vehicle';
+  else if (/\b(smoke|fire|flame)\b/.test(t)) subject = 'any';
+  if (/\b(person|people|worker|someone|anyone|lasher|pedestrian|crew|man|staff|visitor)s?\b/.test(t)) subject = 'person';
+  understood.push(`Subject: ${SUBJECT_LABEL[subject].toLowerCase()}`);
+
+  const ppe: Ppe[] = [];
+
+  // Only the use cases offered are drafted: fire and smoke, a count over a limit, phone use, and entering a restricted
+  // area (anything else reads as that). The rest are parked, see lib/usecases.ts.
+  let condition: Condition = 'enters';
+  let crowdOver = 0;
+  const crowd = /(more than|over|above|exceeds?)\s+(\d+)\s*(people|persons|workers|men|vehicles|trucks|cars)?/.exec(t);
+  if (/\b(smoke|fire|flame)\b/.test(t)) condition = 'smoke';
+  else if (crowd || /crowd/.test(t)) {
+    condition = 'crowd';
+    crowdOver = crowd ? Number(crowd[2]) : 6;
+  } else if (/\b(phone|mobile|cellphone|texting|on a call)\b/.test(t)) condition = 'phone';
+  else if (!/enter|inside|into|walks? in|goes in|in the|restricted/.test(t)) assumed.push('No action word found, so the rule fires when the subject enters the restricted area');
+  understood.push(`Condition: ${CONDITION_LABEL[condition].replace('N', String(crowdOver))}`);
+
+  let durationSec = { enters: 1, outside: 5, dwells: 30, crosses: 0, 'no-ppe': 3, crowd: 30, smoke: 3, stopped: 60, near: 1, fewer: 30, absent: 30, wrongway: 0, tailgate: 0, speeding: 1, running: 2, abandoned: 60, phone: 3, down: 5 }[condition];
+  const s = /(\d+)\s*(s|sec|secs|second|seconds)\b/.exec(t);
+  const m = /(\d+)\s*(m|min|mins|minute|minutes)\b/.exec(t);
+  if (s) durationSec = Number(s[1]);
+  else if (m) durationSec = Number(m[1]) * 60;
+  if (s || m) understood.push(`Duration: ${secs(durationSec)} or more`);
+  else assumed.push(`No time given, so it waits ${secs(durationSec)} before alerting`);
+
+  // Zones: score each zone name by the words it shares with the text.
+  const zoneNames = [...new Set(cameras.flatMap((c) => c.zones.map((z) => z.name)))];
+  const tw = new Set(words(t));
+  let best = '';
+  let bestScore = 0;
+  for (const name of zoneNames) {
+    const nw = words(name);
+    const hit = nw.filter((w) => tw.has(w)).length;
+    const score = hit / nw.length + (t.includes(name.toLowerCase()) ? 1 : 0);
+    if (hit && score > bestScore) {
+      best = name;
+      bestScore = score;
+    }
+  }
+
+  let cameraIds: string[] = [];
+  let zoneIds: string[] = [];
+  if (best) {
+    const withZone = cameras.filter((c) => c.zones.some((z) => z.name === best));
+    cameraIds = withZone.map((c) => c.id);
+    zoneIds = withZone.flatMap((c) => c.zones.filter((z) => z.name === best).map((z) => z.id));
+    understood.push(`Zone: ${best} (${cameraIds.length} camera${cameraIds.length === 1 ? '' : 's'} have it)`);
+  } else {
+    const area = AREA_WORDS.find(([re]) => re.test(t))?.[1];
+    if (area) {
+      cameraIds = cameras.filter((c) => c.areaId === area && c.status !== 'offline').map((c) => c.id);
+      understood.push(`Area: ${areas.find((a) => a.id === area)?.name ?? area} (${cameraIds.length} cameras, whole view)`);
+    } else assumed.push('No zone or area named: pick the cameras below');
+  }
+
+  let schedule: Schedule = 'always';
+  if (/\bnight|after dark\b/.test(t)) schedule = 'night';
+  else if (/\bday ?time|day shift|during the day\b/.test(t)) schedule = 'day';
+  else if (/vessel (ops|operations)|cargo operations|while (loading|discharging|working)|during (a )?lift|during lifts/.test(t)) schedule = 'vessel-ops';
+  if (schedule !== 'always') understood.push(`When: ${SCHEDULE_LABEL[schedule]}`);
+
+  let priority: Priority;
+  if (/critical|immediately|urgent|emergency|right away/.test(t)) priority = 'P1';
+  else if (/\bhigh\b|asap|quickly/.test(t)) priority = 'P2';
+  else if (/\blow\b|just log|only log|record only/.test(t)) priority = 'P4';
+  else {
+    priority = condition === 'smoke' || /exclusion|imdg|hazard/.test(t) ? 'P1' : condition === 'crowd' ? 'P3' : 'P2';
+    assumed.push(`Alert criticality ${priority} suggested from what the rule watches for`);
+  }
+
+  const report: ReportType | 'none' = priority === 'P1' ? 'Incident' : priority === 'P4' ? 'none' : subject === 'vehicle' || /lane/.test(t) ? 'Near miss' : 'Observation';
+  const classification: Classification = condition === 'smoke' ? 'Unsafe condition' : 'Unsafe act';
+
+  const rule = { subject, condition, durationSec, ppe, crowdOver, schedule, priority, report, classification, cameraIds, zoneIds, name: '' };
+  rule.name = cap(describeRule(rule, best ? [best] : []).replace(/^A (person|vehicle) /, '$1 ').replace(/ for (\d+ (s|min)) or more$/, ' · $1+'));
+  return { rule, understood, assumed };
+}
+
+const SEVERITY: Record<Priority, Report['severity']> = { P1: 'Critical', P2: 'High', P3: 'Medium', P4: 'Low' };
+
+const ACTION: Record<Condition, string> = {
+  enters: 'Operation in the area stopped and the person removed from the zone.',
+  outside: 'Supervisor called the worker back to the marked walkway.',
+  dwells: 'Supervisor asked the person to leave the zone.',
+  crosses: 'Security sent to the location; access checked.',
+  'no-ppe': 'Worker stopped and asked to put on the missing PPE before going on.',
+  crowd: 'Access to the gangway controlled until numbers came down.',
+  gathering: 'Supervisor sent to disperse the group and find out why people gathered.',
+  smoke: 'Area cleared and the fire team informed.',
+  stopped: 'Driver asked to move clear of the crossing.',
+  near: 'Person moved clear of the moving vehicle; driver and supervisor told.',
+  fewer: 'Second person sent to the area before work went on.',
+  absent: 'Post covered; supervisor told why it was empty.',
+  wrongway: 'Driver or person stopped and directed the right way.',
+  tailgate: 'Access point checked; the second person identified.',
+  speeding: 'Driver spoken to about the speed limit.',
+  running: 'Supervisor spoke to the person about running.',
+  abandoned: 'Object checked and removed or returned to its owner.',
+  phone: 'Person reminded that phones are not allowed here.',
+  down: 'First aid sent to the person; supervisor told.',
+};
+
+/** Drafts the report for an alert. */
+export function draftRecord(alert: Alert, cam: Camera, rule: Rule | undefined, area: Area | undefined, when: string): Omit<Report, 'ref' | 'at' | 'createdBy' | 'source'> {
+  const type: ReportType = rule && rule.report !== 'none' ? rule.report : 'Observation';
+  return {
+    type,
+    title: `${alert.title} · ${cam.name}`,
+    description:
+      `At ${when}, camera ${cam.id} (${cam.name}, ${area?.name ?? cam.areaId}) saw: ${alert.detail.charAt(0).toLowerCase()}${alert.detail.slice(1)}. ` +
+      `Detected by rule ${rule?.id ?? alert.ruleId} "${rule?.name ?? alert.title}" with ${Math.round(alert.confidence * 100)}% confidence. Snapshot and 20s clip attached.`,
+    classification: rule?.classification ?? 'Unsafe act',
+    severity: SEVERITY[alert.priority],
+    immediateAction: ACTION[rule?.condition ?? 'enters'],
+  };
+}

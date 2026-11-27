@@ -1,0 +1,632 @@
+import { defaultZones } from '../scenes/zones';
+import { reportRef } from '../lib/refs';
+import type { Alert, Area, Camera, Policy, Rule, Team, User, Wall } from './types';
+
+// Sample site: a container terminal with about 690 cameras. All names are placeholders.
+
+export const SITE = { name: 'North Quay Terminal', short: 'NQT' };
+
+export const AREAS: Area[] = [
+  { id: 'quay', name: 'Quay apron · Berths 1–8', scene: 'quay', highOps: true },
+  { id: 'deck', name: 'Vessel deck and gangway', scene: 'deck', highOps: true },
+  { id: 'yard', name: 'Container yard · Blocks A–P', scene: 'yard', highOps: false },
+  { id: 'reefer', name: 'Reefer stacks', scene: 'reefer', highOps: false },
+  { id: 'gate', name: 'Gate complex', scene: 'gate', highOps: true },
+  { id: 'workshop', name: 'Equipment workshop', scene: 'workshop', highOps: false },
+  { id: 'hazmat', name: 'IMDG hazardous cargo bay', scene: 'hazmat', highOps: true },
+  { id: 'perimeter', name: 'Perimeter and berth access', scene: 'perimeter', highOps: false },
+];
+
+/** Departments that own cameras, and the one each work area belongs to unless a camera says otherwise. */
+export const DEPARTMENTS = ['Marine Operations', 'Yard Operations', 'Gate Operations', 'Engineering and Maintenance', 'HSE', 'Security'];
+export const AREA_DEPARTMENT: Record<string, string> = {
+  quay: 'Marine Operations',
+  deck: 'Marine Operations',
+  yard: 'Yard Operations',
+  reefer: 'Yard Operations',
+  gate: 'Gate Operations',
+  workshop: 'Engineering and Maintenance',
+  hazmat: 'HSE',
+  perimeter: 'Security',
+};
+
+const BASE_NAMES: Record<string, string[]> = {
+  quay: ['STS 1 · landside', 'STS 1 · waterside', 'STS 2 · landside', 'STS 2 · waterside', 'STS 3 · landside', 'STS 3 · waterside', 'Berth 1 apron', 'Berth 2 apron', 'Berth 3 apron', 'Lashing cage B1', 'Lashing cage B2', 'Hatch cover store', 'Quay road east', 'Quay road west'],
+  deck: ['Berth 1 · deck port side', 'Berth 1 · deck starboard', 'Berth 2 · gangway', 'Berth 2 · deck port side', 'Berth 2 · deck starboard', 'Berth 3 · gangway', 'Berth 3 · deck port side', 'Berth 3 · lashing bridge'],
+  yard: Array.from({ length: 30 }, (_, i) => `Block ${'ABCDEF'[Math.floor(i / 5)]} · row ${(i % 5) * 6 + 2}`),
+  reefer: ['Reefer R1 north', 'Reefer R1 south', 'Reefer R2 north', 'Reefer R2 south', 'Reefer R3 north', 'Reefer R3 south', 'Reefer gantry 1', 'Reefer gantry 2'],
+  gate: ['In-gate lane 1', 'In-gate lane 2', 'In-gate lane 3', 'In-gate lane 4', 'Out-gate lane 1', 'Out-gate lane 2', 'Out-gate lane 3', 'Out-gate lane 4', 'Gate canopy north', 'Gate canopy south', 'Driver walkway', 'Truck holding area'],
+  workshop: ['Workshop bay 1', 'Workshop bay 2', 'Workshop bay 3', 'Hot work bay', 'Tyre bay', 'Parts store', 'Wash bay', 'Workshop yard'],
+  hazmat: ['IMDG bay north', 'IMDG bay south', 'IMDG gate', 'IMDG spill kit', 'Class 1 enclosure', 'Class 3 row'],
+  perimeter: ['Fence east 1', 'Fence east 2', 'Fence north 1', 'Fence north 2', 'Berth 1 access gate', 'Berth 3 access gate', 'Fence west 1', 'Fence west 2', 'Rail siding gate', 'Main road gate'],
+};
+
+const range = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, k) => from + k);
+const BERTHS = range(1, 8);
+const BLOCKS = 'ABCDEFGHIJKLMNOP'.split('');
+
+/** The first cameras keep their names and numbers; a full terminal has hundreds more, named by where they point. */
+const EXTRA_NAMES: Record<string, string[]> = {
+  quay: [
+    ...range(4, 12).flatMap((n) => [`STS ${n} · landside`, `STS ${n} · waterside`]),
+    ...range(4, 8).map((n) => `Berth ${n} apron`),
+    ...range(3, 8).map((n) => `Lashing cage B${n}`),
+    ...BERTHS.flatMap((n) => ['A', 'B', 'C'].map((l) => `Berth ${n} · quay edge ${l}`)),
+    ...BERTHS.map((n) => `Berth ${n} · bollard line`),
+    ...range(1, 12).map((n) => `STS ${n} · spreader view`),
+    ...range(1, 12).map((n) => `Quay road section ${n}`),
+    ...range(1, 8).flatMap((n) => [`Berth ${n} · apron north`, `Berth ${n} · apron south`]),
+    ...range(1, 8).map((n) => `Berth ${n} · fire hydrant point`),
+    ...range(1, 5).map((n) => `Hatch cover store ${n + 1}`),
+    ...range(1, 4).map((n) => `Quay lighting mast ${n}`),
+  ],
+  deck: [
+    'Berth 1 · gangway', 'Berth 1 · lashing bridge', 'Berth 2 · lashing bridge',
+    ...range(4, 8).flatMap((n) => [`Berth ${n} · gangway`, `Berth ${n} · deck port side`, `Berth ${n} · deck starboard`, `Berth ${n} · lashing bridge`]),
+    ...BERTHS.flatMap((n) => [`Berth ${n} · deck forward`, `Berth ${n} · deck aft`, `Berth ${n} · hatch cover`]),
+    ...BERTHS.map((n) => `Berth ${n} · accommodation ladder`),
+    ...BERTHS.map((n) => `Berth ${n} · cargo hold access`),
+    ...BERTHS.map((n) => `Berth ${n} · mooring deck`),
+    'Berth 5 · bunkering point',
+  ],
+  yard: [
+    ...BLOCKS.slice(6).flatMap((b) => [2, 8, 14, 20, 26].map((r) => `Block ${b} · row ${r}`)),
+    ...BLOCKS.flatMap((b) => [5, 11, 17, 23, 29].map((r) => `Block ${b} · row ${r}`)),
+    ...BLOCKS.flatMap((b) => [3, 9, 15, 21, 27].map((r) => `Block ${b} · row ${r}`)),
+  ],
+  reefer: [
+    ...range(4, 8).flatMap((n) => [`Reefer R${n} north`, `Reefer R${n} south`]),
+    ...range(3, 8).map((n) => `Reefer gantry ${n}`),
+    ...range(1, 8).flatMap((n) => range(1, 4).map((k) => `Reefer R${n} · row ${k}`)),
+    ...range(1, 4).map((n) => `Reefer plug room ${n}`),
+  ],
+  gate: [
+    ...range(5, 8).map((n) => `In-gate lane ${n}`),
+    ...range(5, 8).map((n) => `Out-gate lane ${n}`),
+    'Gate canopy east', 'Gate canopy west',
+    ...range(1, 4).flatMap((n) => [`OCR portal in ${n}`, `OCR portal out ${n}`]),
+    ...range(1, 4).map((n) => `Driver registration kiosk ${n}`),
+    'Gate office',
+    ...range(1, 6).map((n) => `Truck holding bay ${n}`),
+    ...range(1, 4).map((n) => `Document check lane ${n}`),
+    ...range(1, 3).map((n) => `Weighbridge ${n}`),
+    ...range(1, 2).map((n) => `Scanner portal ${n}`),
+  ],
+  workshop: [
+    ...range(4, 8).map((n) => `Workshop bay ${n}`),
+    ...range(1, 4).map((n) => `RTG service bay ${n}`),
+    'Battery charging 1', 'Battery charging 2', 'Fuel station 1', 'Fuel station 2', 'Welding shop', 'Paint shop', 'Tool crib', 'Parts store 2',
+    'Generator room', 'Compressor room', 'Crane service pit', 'Lube store',
+  ],
+  hazmat: [
+    'IMDG bay east', 'IMDG bay west', 'Class 1 enclosure 2', 'Class 1 enclosure 3',
+    ...[2, 4, 5, 6, 8, 9].map((c) => `Class ${c} row`),
+    'IMDG gate 2', 'IMDG inspection shed', 'Fire pump house', 'Spill containment bund',
+    ...range(1, 4).map((n) => `Segregation bay ${n}`),
+  ],
+  perimeter: [
+    ...range(3, 10).map((n) => `Fence east ${n}`),
+    ...range(3, 10).map((n) => `Fence north ${n}`),
+    ...range(3, 10).map((n) => `Fence west ${n}`),
+    ...range(1, 10).map((n) => `Fence south ${n}`),
+    ...[2, 4, 5, 6].map((n) => `Berth ${n} access gate`),
+    'Pilot station', 'Rail siding crossing',
+  ],
+};
+
+const NAMES: Record<string, string[]> = Object.fromEntries(Object.keys(BASE_NAMES).map((k) => [k, [...BASE_NAMES[k], ...EXTRA_NAMES[k]]]));
+
+const PREFIX: Record<string, string> = { quay: 'QUA', deck: 'DCK', yard: 'YRD', reefer: 'RFR', gate: 'GTE', workshop: 'WSH', hazmat: 'HAZ', perimeter: 'PER' };
+
+const MAKES = ['Axis Q1786-LE', 'Hanwha XNO-8082R', 'Bosch DINION 5100i', 'Hikvision DS-2CD5A46'];
+
+export const camId = (area: string, n: number) => `${PREFIX[area]}-${String(n).padStart(2, '0')}`;
+
+// Cameras the admin has drawn zones on (the rest are added but not set up yet).
+const ZONED = new Set([
+  'QUA-01', 'QUA-02', 'QUA-03', 'QUA-04', 'QUA-05', 'QUA-06', 'QUA-07', 'QUA-08', 'QUA-09',
+  'DCK-01', 'DCK-02', 'DCK-03', 'DCK-04', 'DCK-05', 'DCK-06', 'DCK-07', 'DCK-08',
+  'YRD-03', 'YRD-07', 'YRD-12', 'YRD-18', 'YRD-24',
+  'RFR-01', 'RFR-03', 'RFR-07',
+  'GTE-01', 'GTE-02', 'GTE-03', 'GTE-04', 'GTE-11',
+  'WSH-01', 'WSH-02', 'WSH-04',
+  'HAZ-01', 'HAZ-02', 'HAZ-03', 'HAZ-05',
+  'PER-01', 'PER-03', 'PER-05', 'PER-06',
+]);
+const DEGRADED = new Set(['YRD-14', 'PER-08', 'RFR-05']);
+const OFFLINE = new Set(['YRD-27', 'WSH-07']);
+/** How long ago, in minutes, each sample faulty camera became unavailable. */
+export const DOWN_FOR_MIN: Record<string, number> = { 'WSH-07': 220, 'YRD-27': 52, 'RFR-05': 75, 'PER-08': 26, 'YRD-14': 9 };
+
+// Numbers the sample cameras never take: PER-11 is the connected ferry camera, and DCK-09 belonged to a camera that was removed, so no
+// sample camera comes back under that name.
+const RESERVED_IDS = new Set(['DCK-09', 'PER-11']);
+
+export function seedCameras(now: number): Camera[] {
+  const out: Camera[] = [];
+  let ip = 20;
+  for (const a of AREAS) {
+    // Reserved numbers are skipped, so the sample cameras count past them.
+    let num = 0;
+    NAMES[a.id].forEach((name, i) => {
+      num++;
+      while (RESERVED_IDS.has(camId(a.id, num))) num++;
+      const id = camId(a.id, num);
+      const variant = i;
+      out.push({
+        id,
+        name,
+        areaId: a.id,
+        scene: a.scene,
+        variant,
+        status: OFFLINE.has(id) ? 'offline' : DEGRADED.has(id) ? 'degraded' : 'online',
+        statusSince: DOWN_FOR_MIN[id] ? now - DOWN_FOR_MIN[id] * 60000 : undefined,
+        stream: `rtsp://10.40.${Math.floor(ip / 250) + 1}.${ip++ % 250}:554/stream1`,
+        make: MAKES[(i + a.id.length) % MAKES.length],
+        resolution: i % 3 === 0 ? '3840 × 2160' : '2560 × 1440',
+        fps: i % 3 === 0 ? 15 : 20,
+        zones: ZONED.has(id) || (i >= BASE_NAMES[a.id].length && (i * 7 + a.id.length) % 10 < 7) ? defaultZones(a.scene, variant, id) : [],
+        addedAt: now - (40 - (i % 10)) * 86400000,
+        addedBy: 'u-priya',
+      });
+    });
+  }
+  out.push(...liveCameras(now));
+  return out;
+}
+
+/** The ferry's public live stream, a connected camera: the service reads it for real. If the feed cannot be opened the
+ *  console shows it as interrupted. (The bundled sample videos are picked in camera set-up; none is a camera by default.) */
+export const FERRY_LINK = 'https://www.youtube.com/watch?v=QO-hO_kwwmY';
+function liveCameras(now: number): Camera[] {
+  const real = { scene: 'deck', variant: 0, status: 'online', make: 'Demo feed', resolution: '1920 × 1080', fps: 25, addedAt: now - 2 * 86400000, addedBy: 'u-priya' } as const;
+  return [
+    {
+      ...real,
+      scene: 'perimeter',
+      id: 'PER-11',
+      name: 'Ferry cam · Southampton to Cowes (live)',
+      areaId: 'perimeter',
+      stream: FERRY_LINK,
+      zones: [{ id: 'PER-11-Z1', name: 'Restricted area', purpose: 'restricted', kind: 'polygon', points: [[18.8, 68], [17.2, 89], [49.8, 86.9], [86.2, 71.6], [89.5, 66.1], [76, 60]] }],
+      source: { kind: 'link', url: FERRY_LINK, live: true, title: 'Ferry cam · Southampton to Cowes' },
+    },
+  ];
+}
+
+export const TEAMS: Team[] = [
+  { id: 't-quay', name: 'Quay and marine', areaIds: ['quay', 'deck', 'perimeter'] },
+  { id: 't-yard', name: 'Yard and gate', areaIds: ['yard', 'reefer', 'gate'] },
+  { id: 't-hse', name: 'HSE control room', areaIds: AREAS.map((a) => a.id) },
+];
+
+export const USERS: User[] = [
+  { id: 'u-priya', name: 'Priya Nair', role: 'Safety admin', teamId: 't-hse', phone: '+91 98450 11021' },
+  { id: 'u-arun', name: 'Arun Kumar', role: 'Control room operator', teamId: 't-quay', phone: '+91 98450 11022' },
+  { id: 'u-meera', name: 'Meera Shah', role: 'Control room operator', teamId: 't-yard', phone: '+91 98450 11023' },
+  { id: 'u-rahul', name: 'Rahul Verma', role: 'Shift supervisor', teamId: 't-quay', phone: '+91 98450 11024' },
+  { id: 'u-sana', name: 'Sana Iqbal', role: 'Shift supervisor', teamId: 't-yard', phone: '+91 98450 11025' },
+  { id: 'u-vikram', name: 'Vikram Rao', role: 'HSE manager', teamId: 't-hse', phone: '+91 98450 11026' },
+  { id: 'u-daniel', name: 'Daniel Fernandes', role: 'Terminal manager', teamId: 't-hse', phone: '+91 98450 11027' },
+];
+
+const areaCams = (cams: Camera[], ...areaIds: string[]) => cams.filter((c) => areaIds.includes(c.areaId)).map((c) => c.id);
+
+/** Every wall starts as equal-sized thumbnails: nothing pinned big, every camera of its area rolling through one even grid
+ *  (the pinned cameras come first, so they show on the first page). The wall settings change that. */
+export function seedWalls(cams: Camera[]): Wall[] {
+  const first = (pinned: string[], rest: string[]) => [...pinned, ...rest.filter((id) => !pinned.includes(id))];
+  const quayPinned = ['QUA-03', 'DCK-03', 'QUA-08', 'DCK-04'];
+  const yardPinned = ['GTE-01', 'GTE-02', 'YRD-07', 'RFR-07'];
+  const hsePinned = ['HAZ-01', 'DCK-03', 'QUA-03', 'WSH-04', 'GTE-01', 'HAZ-03'];
+  const even = { pinnedShare: 0 as const, pinnedLayout: '2x2' as const, pinned: [] as (string | null)[], rollingTiles: 9 as const };
+  return [
+    { id: 'w-quay', name: 'Quay And Deck', teamId: 't-quay', ...even, rotation: first(quayPinned, areaCams(cams, 'quay', 'deck', 'perimeter')), rotateSec: 10, autoPinBusy: false, alertTakeover: true },
+    { id: 'w-yard', name: 'Yard And Gate', teamId: 't-yard', ...even, rotation: first(yardPinned, areaCams(cams, 'yard', 'reefer', 'gate')), rotateSec: 10, autoPinBusy: false, alertTakeover: true },
+    { id: 'w-hse', name: 'Critical Areas', teamId: 't-hse', ...even, rotation: first(hsePinned, cams.map((c) => c.id)), rotateSec: 15, autoPinBusy: false, alertTakeover: true },
+    { id: 'w-tour', name: 'All Cameras Tour', teamId: 't-hse', ...even, rollingTiles: 16, rotation: cams.map((c) => c.id), rotateSec: 15, autoPinBusy: false, alertTakeover: false },
+  ];
+}
+
+const base: Pick<Rule, 'ppe' | 'crowdOver' | 'schedule' | 'mode' | 'classification' | 'updatedBy'> = {
+  ppe: [],
+  crowdOver: 0,
+  schedule: 'always',
+  mode: 'live',
+  classification: 'Unsafe act',
+  updatedBy: 'u-priya',
+};
+
+export function seedRules(cams: Camera[], now: number): Rule[] {
+  const zoneIds = (camIds: string[], name: string) =>
+    cams.filter((c) => camIds.includes(c.id)).flatMap((c) => c.zones.filter((z) => z.name === name).map((z) => z.id));
+  // The first cameras of each list are the ones the rule was set up on; the later ones are the rest of the terminal that
+  // was added as cameras were drawn. Anything with the right zone is watched.
+  const more = (area: string, have: string[], zone: string, test: (c: Camera) => boolean = () => true) =>
+    cams.filter((c) => c.areaId === area && !have.includes(c.id) && c.zones.some((z) => z.name === zone) && test(c)).map((c) => c.id);
+  const gangways0 = ['DCK-03', 'DCK-06'];
+  const deck0 = ['DCK-01', 'DCK-02', 'DCK-04', 'DCK-05', 'DCK-07'];
+  const isGangway = (c: Camera) => /gangway/i.test(c.name);
+  const gangways = [...gangways0, ...more('deck', gangways0, 'Deck walkway', isGangway)];
+  const deckCams = [...deck0, ...more('deck', [...deck0, ...gangways], 'Deck walkway')];
+  const cranes0 = ['QUA-01', 'QUA-02', 'QUA-03', 'QUA-04', 'QUA-05', 'QUA-06'];
+  const cranes = [...cranes0, ...more('quay', cranes0, 'Crane exclusion zone', (c) => /STS/.test(c.name))];
+  const aprons0 = ['QUA-07', 'QUA-08', 'QUA-09', ...cranes];
+  const aprons = [...aprons0, ...more('quay', aprons0, 'Apron walkway')];
+  const yard0 = ['YRD-03', 'YRD-07', 'YRD-12', 'YRD-18', 'YRD-24'];
+  const yard = [...yard0, ...more('yard', yard0, 'RTG lane')];
+  const haz0 = ['HAZ-01', 'HAZ-02', 'HAZ-03', 'HAZ-05'];
+  const haz = [...haz0, ...more('hazmat', haz0, 'IMDG fenced bay')];
+  const gate0 = ['GTE-01', 'GTE-02', 'GTE-03', 'GTE-04', 'GTE-11'];
+  const gate = [...gate0, ...more('gate', gate0, 'Pedestrian crossing')];
+  const ws0 = ['WSH-01', 'WSH-02', 'WSH-04'];
+  const ws = [...ws0, ...more('workshop', ws0, 'Hot work bay')];
+  const per0 = ['PER-01', 'PER-03', 'PER-05', 'PER-06'];
+  const per = [...per0, ...more('perimeter', per0, 'Fence line')];
+  const t = (d: number) => now - d * 86400000;
+  return [
+    {
+      ...base,
+      id: 'R-01',
+      name: 'Person away from the deck walkway',
+      plainText: 'Alert me when a person moves away from the deck walkway for at least 5 seconds',
+      cameraIds: [...deckCams, ...gangways],
+      zoneIds: zoneIds([...deckCams, ...gangways], 'Deck walkway'),
+      subject: 'person',
+      condition: 'outside',
+      durationSec: 5,
+      schedule: 'vessel-ops',
+      priority: 'P2',
+      report: 'Observation',
+      updatedAt: t(3),
+    },
+    {
+      ...base,
+      id: 'R-02',
+      name: 'Person at the deck edge without a life jacket',
+      cameraIds: [...deckCams, ...gangways],
+      zoneIds: zoneIds([...deckCams, ...gangways], 'Deck edge'),
+      subject: 'person',
+      condition: 'no-ppe',
+      ppe: ['life jacket'],
+      durationSec: 2,
+      priority: 'P2',
+      report: 'Incident',
+      updatedAt: t(3),
+    },
+    {
+      ...base,
+      id: 'R-03',
+      name: 'Person inside the crane exclusion zone',
+      cameraIds: cranes,
+      zoneIds: zoneIds(cranes, 'Crane exclusion zone'),
+      subject: 'person',
+      condition: 'enters',
+      durationSec: 1,
+      schedule: 'vessel-ops',
+      priority: 'P1',
+      report: 'Incident',
+      updatedAt: t(6),
+    },
+    {
+      ...base,
+      id: 'R-04',
+      name: 'No helmet / PPE / safety vest on the quay apron',
+      cameraIds: aprons,
+      zoneIds: [],
+      subject: 'person',
+      condition: 'no-ppe',
+      ppe: ['helmet', 'vest'],
+      durationSec: 3,
+      priority: 'P3',
+      report: 'Observation',
+      updatedAt: t(6),
+    },
+    {
+      ...base,
+      id: 'R-05',
+      name: 'Pedestrian in an RTG lane',
+      cameraIds: yard,
+      zoneIds: zoneIds(yard, 'RTG lane'),
+      subject: 'person',
+      condition: 'enters',
+      durationSec: 2,
+      priority: 'P2',
+      report: 'Near miss',
+      updatedAt: t(9),
+    },
+    {
+      ...base,
+      id: 'R-06',
+      name: 'Unauthorised entry to the IMDG bay',
+      cameraIds: haz,
+      zoneIds: zoneIds(haz, 'Bay gate'),
+      subject: 'person',
+      condition: 'crosses',
+      durationSec: 0,
+      priority: 'P1',
+      report: 'Incident',
+      classification: 'Unsafe act',
+      updatedAt: t(12),
+    },
+    {
+      ...base,
+      id: 'R-07',
+      name: 'Smoke or flame in the workshop',
+      cameraIds: ws,
+      zoneIds: [],
+      subject: 'any',
+      condition: 'smoke',
+      durationSec: 3,
+      priority: 'P1',
+      report: 'Incident',
+      classification: 'Unsafe condition',
+      updatedAt: t(12),
+    },
+    {
+      ...base,
+      id: 'R-08',
+      name: 'Truck stopped on the pedestrian crossing',
+      cameraIds: gate,
+      zoneIds: zoneIds(gate, 'Pedestrian crossing'),
+      subject: 'vehicle',
+      condition: 'stopped',
+      durationSec: 60,
+      priority: 'P3',
+      report: 'Near miss',
+      classification: 'Unsafe condition',
+      updatedAt: t(15),
+    },
+    {
+      ...base,
+      id: 'R-09',
+      name: 'Fence crossed at night',
+      cameraIds: per,
+      zoneIds: zoneIds(per, 'Fence line'),
+      subject: 'person',
+      condition: 'crosses',
+      durationSec: 0,
+      schedule: 'night',
+      priority: 'P2',
+      report: 'Incident',
+      updatedAt: t(15),
+    },
+    {
+      ...base,
+      id: 'R-10',
+      name: 'More than 6 people at a gangway',
+      cameraIds: gangways,
+      zoneIds: [],
+      subject: 'person',
+      condition: 'crowd',
+      crowdOver: 6,
+      durationSec: 30,
+      priority: 'P3',
+      mode: 'test',
+      report: 'none',
+      updatedAt: t(1),
+    },
+    {
+      ...base,
+      id: 'R-11',
+      name: 'Person climbing the upper reefer tiers',
+      cameraIds: ['RFR-01', 'RFR-03', 'RFR-07'],
+      zoneIds: zoneIds(['RFR-01', 'RFR-03', 'RFR-07'], 'Upper tiers'),
+      subject: 'person',
+      condition: 'enters',
+      durationSec: 3,
+      priority: 'P1',
+      mode: 'test',
+      report: 'Observation',
+      updatedAt: t(1),
+    },
+    {
+      ...base,
+      id: 'R-13',
+      name: 'Person in the ferry cam restricted area',
+      cameraIds: ['PER-11'],
+      zoneIds: ['PER-11-Z1'],
+      subject: 'person',
+      condition: 'enters',
+      durationSec: 3,
+      priority: 'P2',
+      mode: 'test',
+      report: 'Observation',
+      updatedAt: t(1),
+    },
+  ];
+}
+
+export const POLICIES: Policy[] = [
+  { priority: 'P1', label: 'Critical', channels: ['wall', 'push', 'sms', 'call'], notify: ['Shift supervisor', 'HSE manager'], reviewWithinSec: 30, reportWithinSec: 60, escalateTo: 'Terminal manager', remindEveryMin: 1, remindMax: 3, report: 'on-acknowledge', wallTakeover: true, sound: true },
+  { priority: 'P2', label: 'High', channels: ['wall', 'push', 'whatsapp'], notify: ['Shift supervisor'], reviewWithinSec: 120, reportWithinSec: 300, escalateTo: 'HSE manager', remindEveryMin: 2, remindMax: 3, report: 'on-acknowledge', wallTakeover: true, sound: false },
+  { priority: 'P3', label: 'Medium', channels: ['wall', 'push'], notify: ['Shift supervisor'], reviewWithinSec: 300, reportWithinSec: 900, escalateTo: 'HSE manager', remindEveryMin: 5, remindMax: 3, report: 'reviewer-decides', wallTakeover: false, sound: false },
+  { priority: 'P4', label: 'Low', channels: ['wall', 'email'], notify: ['Control room operator'], reviewWithinSec: 900, reportWithinSec: 0, escalateTo: 'none', remindEveryMin: 0, remindMax: 3, report: 'never', wallTakeover: false, sound: false },
+];
+
+const MIN = 60000;
+
+export function seedAlerts(now: number): Alert[] {
+  const a = (p: Partial<Alert> & Pick<Alert, 'id' | 'ruleId' | 'cameraId' | 'priority' | 'title' | 'detail' | 'at' | 'state' | 'box'>): Alert => ({
+    confidence: 0.91,
+    deliveries: [],
+    activity: [{ at: p.at, text: 'Detected by the edge model', actor: 'system' }],
+    ...p,
+  });
+  return [
+    a({
+      id: 'ALT-1041',
+      ruleId: 'R-01',
+      cameraId: 'DCK-04',
+      zoneId: 'DCK-04-Z1',
+      priority: 'P2',
+      title: 'Person away from the deck walkway',
+      detail: 'Outside Deck walkway for 7s (rule: 5s or more)',
+      at: now - 70 * 1000,
+      state: 'new',
+      box: [36, 50, 7, 22],
+      confidence: 0.93,
+      deliveries: [
+        { at: now - 3 * MIN, to: 'u-arun', channel: 'wall', status: 'read', reason: 'alert' },
+        { at: now - 3 * MIN, to: 'u-rahul', channel: 'push', status: 'delivered', reason: 'alert' },
+        { at: now - 3 * MIN, to: 'u-rahul', channel: 'whatsapp', status: 'read', reason: 'alert' },
+      ],
+    }),
+    a({
+      id: 'ALT-1040',
+      ruleId: 'R-04',
+      cameraId: 'QUA-08',
+      priority: 'P3',
+      title: 'No helmet / PPE / safety vest on the quay apron',
+      detail: 'Helmet not seen for 4s (rule: 3s or more)',
+      at: now - 11 * MIN,
+      state: 'acknowledged',
+      ackBy: 'u-rahul',
+      ackAt: now - 8 * MIN,
+      ackVia: 'mobile',
+      box: [55, 62, 6, 20],
+      confidence: 0.88,
+      deliveries: [
+        { at: now - 11 * MIN, to: 'u-arun', channel: 'wall', status: 'read', reason: 'alert' },
+        { at: now - 11 * MIN, to: 'u-rahul', channel: 'push', status: 'read', reason: 'alert' },
+      ],
+      activity: [
+        { at: now - 11 * MIN, text: 'Detected by the edge model', actor: 'system' },
+        { at: now - 8 * MIN, text: 'Reviewed on the phone · "Spoke to the lasher, helmet back on"', actor: 'u-rahul' },
+      ],
+    }),
+    a({
+      id: 'ALT-1039',
+      ruleId: 'R-05',
+      cameraId: 'YRD-12',
+      zoneId: 'YRD-12-Z1',
+      priority: 'P2',
+      title: 'Pedestrian in an RTG lane',
+      detail: 'Entered RTG lane while the RTG was moving',
+      at: now - 26 * MIN,
+      state: 'acknowledged',
+      ackBy: 'u-sana',
+      ackAt: now - 23 * MIN,
+      ackVia: 'mobile',
+      box: [58, 60, 6, 20],
+      confidence: 0.95,
+      deliveries: [
+        { at: now - 26 * MIN, to: 'u-meera', channel: 'wall', status: 'read', reason: 'alert' },
+        { at: now - 26 * MIN, to: 'u-sana', channel: 'push', status: 'read', reason: 'alert' },
+        { at: now - 26 * MIN, to: 'u-sana', channel: 'whatsapp', status: 'read', reason: 'alert' },
+      ],
+      activity: [
+        { at: now - 26 * MIN, text: 'Detected by the edge model', actor: 'system' },
+        { at: now - 23 * MIN, text: 'Reviewed on the phone', actor: 'u-sana' },
+        { at: now - 22 * MIN, text: 'Near miss reported', actor: 'u-sana' },
+      ],
+      report: {
+        type: 'Near miss',
+        ref: reportRef('Near miss', now - 22 * MIN, 411),
+        title: 'Pedestrian entered RTG lane at Block C row 14',
+        description: 'A worker walked into the RTG lane at Block C while the RTG was travelling. The RTG driver stopped. Seen on YRD-12 at the time of the alert.',
+        classification: 'Unsafe act',
+        severity: 'High',
+        immediateAction: 'Worker escorted back to the walkway; RTG driver briefed.',
+        createdBy: 'u-sana',
+        at: now - 22 * MIN,
+        source: 'mobile',
+      },
+    }),
+    a({
+      id: 'ALT-1038',
+      ruleId: 'R-08',
+      cameraId: 'GTE-02',
+      priority: 'P3',
+      title: 'Truck stopped on the pedestrian crossing',
+      detail: 'Stopped 74s on Pedestrian crossing (rule: 60s or more)',
+      at: now - 48 * MIN,
+      state: 'resolved',
+      ackBy: 'u-meera',
+      ackAt: now - 46 * MIN,
+      ackVia: 'wall',
+      box: [30, 64, 22, 20],
+      confidence: 0.97,
+      deliveries: [{ at: now - 48 * MIN, to: 'u-meera', channel: 'wall', status: 'read', reason: 'alert' }],
+      activity: [
+        { at: now - 48 * MIN, text: 'Detected by the edge model', actor: 'system' },
+        { at: now - 46 * MIN, text: 'Reviewed on the video wall', actor: 'u-meera' },
+        { at: now - 47 * MIN, text: 'Near miss reported', actor: 'u-meera' },
+        { at: now - 41 * MIN, text: 'Closed · truck moved on', actor: 'u-meera' },
+      ],
+      report: {
+        type: 'Near miss',
+        ref: reportRef('Near miss', now - 47 * MIN, 410),
+        title: 'Truck stopped on the pedestrian crossing at out-gate lane 2',
+        description: 'A truck stayed stopped on the pedestrian crossing for over a minute while workers were walking to the gate office. Seen on GTE-02.',
+        classification: 'Unsafe condition',
+        severity: 'Medium',
+        immediateAction: 'Driver asked to move on; gate marshal reminded to keep the crossing clear.',
+        createdBy: 'u-meera',
+        at: now - 47 * MIN,
+        source: 'manual',
+      },
+    }),
+    a({
+      id: 'ALT-1037',
+      ruleId: 'R-03',
+      cameraId: 'QUA-03',
+      zoneId: 'QUA-03-Z1',
+      priority: 'P1',
+      title: 'Person inside the crane exclusion zone',
+      detail: 'Entered Crane exclusion zone during a lift on STS 2',
+      at: now - 74 * MIN,
+      state: 'resolved',
+      ackBy: 'u-rahul',
+      ackAt: now - 73 * MIN,
+      ackVia: 'mobile',
+      box: [46, 66, 6, 22],
+      confidence: 0.96,
+      deliveries: [
+        { at: now - 74 * MIN, to: 'u-arun', channel: 'wall', status: 'read', reason: 'alert' },
+        { at: now - 74 * MIN, to: 'u-rahul', channel: 'push', status: 'read', reason: 'alert' },
+        { at: now - 74 * MIN, to: 'u-rahul', channel: 'sms', status: 'delivered', reason: 'alert' },
+        { at: now - 74 * MIN, to: 'u-vikram', channel: 'push', status: 'read', reason: 'alert' },
+        { at: now - 74 * MIN, to: 'u-vikram', channel: 'call', status: 'delivered', reason: 'alert' },
+      ],
+      activity: [
+        { at: now - 74 * MIN, text: 'Detected by the edge model', actor: 'system' },
+        { at: now - 73 * MIN, text: 'Reviewed on the phone · crane stopped by radio', actor: 'u-rahul' },
+        { at: now - 73 * MIN, text: 'Incident reported (policy: on review)', actor: 'system' },
+        { at: now - 60 * MIN, text: 'Closed · lasher removed from under the spreader', actor: 'u-rahul' },
+      ],
+      report: {
+        type: 'Incident',
+        ref: reportRef('Incident', now - 73 * MIN, 1406),
+        title: 'Person under spreader inside STS 2 exclusion zone',
+        description: 'During a discharge lift on STS 2 a lasher walked into the crane exclusion zone under the spreader. The supervisor stopped the crane by radio. Seen on QUA-03.',
+        classification: 'Unsafe act',
+        severity: 'Critical',
+        immediateAction: 'Crane stopped, lasher removed from the zone, toolbox talk with the lashing gang.',
+        createdBy: 'u-rahul',
+        at: now - 73 * MIN,
+        source: 'auto',
+      },
+    }),
+    a({
+      id: 'ALT-1036',
+      ruleId: 'R-04',
+      cameraId: 'QUA-07',
+      priority: 'P3',
+      title: 'No helmet / PPE / safety vest on the quay apron',
+      detail: 'Vest not seen for 5s (rule: 3s or more)',
+      at: now - 132 * MIN,
+      state: 'false-alarm',
+      ackBy: 'u-arun',
+      ackAt: now - 130 * MIN,
+      ackVia: 'console',
+      box: [62, 58, 6, 20],
+      confidence: 0.71,
+      deliveries: [{ at: now - 132 * MIN, to: 'u-rahul', channel: 'push', status: 'read', reason: 'alert' }],
+      activity: [
+        { at: now - 132 * MIN, text: 'Detected by the edge model', actor: 'system' },
+        { at: now - 130 * MIN, text: 'Marked as a false alarm · vest under a rain jacket', actor: 'u-arun' },
+      ],
+    }),
+  ];
+}

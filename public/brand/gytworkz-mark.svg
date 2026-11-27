@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="14 19 72 72" width="72" height="72">
+  <title>GYTWorkz</title>
+  <defs>
+    <linearGradient id="gyt-small" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#E35A35"/>
+      <stop offset="1" stop-color="#D23A70"/>
+    </linearGradient>
+  </defs>
+  <path d="M33 29 H74 V70" fill="none" stroke="#D12C7B" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M24 55.5 H47 V79" fill="none" stroke="url(#gyt-small)" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

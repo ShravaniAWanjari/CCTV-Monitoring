@@ -1,0 +1,318 @@
+import { useEffect, useMemo, useState, type DragEvent } from 'react';
+import { Icon } from '../../components/Icon';
+import { CameraView, PRIORITY_NAME } from '../../components/ui';
+import type { Alert, Camera, PinnedLayout, Wall } from '../../data/types';
+import { ago, useNow } from '../../lib/time';
+import { isOpen, useActivity, useAlerts, useCameras, usePolicies } from '../../state/store';
+import './wall.css';
+
+// Draws one wall: pinned cameras on the left (the high-operational areas),
+// a rolling section on the right that steps through the rest, alert takeover
+// and the auto-pinned busiest camera. Used by the console page and by the
+// full-screen second-screen view.
+
+export const LAYOUT_SLOTS: Record<PinnedLayout, number> = { '1': 1, '2x2': 4, '1+5': 6, '2x3': 6, '3x3': 9 };
+
+const PRIO_RANK = { P1: 0, P2: 1, P3: 2, P4: 3 };
+
+/** Live video streams one wall plays at once. Each holds a connection open, and a browser allows only six to one server over
+ *  HTTP/1.1, shared by every tab and the pop-out; past that, pictures stall. Further connected cameras show a frame that
+ *  refreshes instead. Pinned cameras get the live slots first, then the ones with alerts. */
+export const MAX_LIVE_STREAMS = 3;
+
+export interface WallModel {
+  pinned: { cam: Camera | null; reason: 'pinned' | 'alert' | 'busy'; slot: number }[];
+  rolling: Camera[];
+  pool: Camera[];
+  page: number;
+  pages: number;
+  alertsByCam: Map<string, Alert>;
+  scopeAlerts: Alert[];
+}
+
+/** Works out what each tile shows right now. */
+export type LiveWallModel = WallModel & { secsLeft: number; paused: boolean; go: (step: number, to?: number) => void };
+
+export function useWallModel(wall: Wall, paused: boolean): LiveWallModel {
+  const cams = useCameras();
+  const alerts = useAlerts();
+  const policies = usePolicies();
+  const activity = useActivity();
+  const now = useNow(1000);
+  const byId = useMemo(() => new Map(cams.map((c) => [c.id, c])), [cams]);
+
+  const scope = useMemo(() => new Set([...wall.pinned.filter(Boolean), ...wall.rotation] as string[]), [wall]);
+  const scopeAlerts = useMemo(
+    () => alerts.filter((a) => isOpen(a) && scope.has(a.cameraId)).sort((a, b) => PRIO_RANK[a.priority] - PRIO_RANK[b.priority] || b.at - a.at),
+    [alerts, scope],
+  );
+  const alertsByCam = useMemo(() => {
+    const m = new Map<string, Alert>();
+    for (const a of scopeAlerts) if (!m.has(a.cameraId)) m.set(a.cameraId, a);
+    return m;
+  }, [scopeAlerts]);
+
+  const takeover = useMemo(() => {
+    if (!wall.alertTakeover) return [] as string[];
+    const allowed = new Set(policies.filter((p) => p.wallTakeover).map((p) => p.priority));
+    return [...new Set(scopeAlerts.filter((a) => allowed.has(a.priority)).map((a) => a.cameraId))];
+  }, [wall.alertTakeover, scopeAlerts, policies]);
+
+  // Busiest camera, re-checked every 30s so the auto slot doesn't flicker.
+  const busyBucket = Math.floor(now / 30000);
+  const busiest = useMemo(() => {
+    if (!wall.autoPinBusy) return undefined;
+    const pinnedSet = new Set(wall.pinned);
+    return wall.rotation
+      .filter((id) => !pinnedSet.has(id) && byId.get(id)?.status !== 'offline')
+      .sort((a, b) => (activity[b] ?? 0) - (activity[a] ?? 0))[0];
+  }, [wall, busyBucket, byId]);
+
+  // A camera someone pinned keeps its tile: an alert or the busiest camera only takes a slot that is empty. An alert camera
+  // that finds none stays at the front of the rolling section (and shows its alert on its own tile when it is pinned already).
+  const slots = wall.pinnedShare === 0 ? 0 : LAYOUT_SLOTS[wall.pinnedLayout];
+  const base = Array.from({ length: slots }, (_, i) => wall.pinned[i] ?? null);
+  const used = new Set<string>(base.filter((id): id is string => !!id));
+  const incoming: { id: string; reason: 'alert' | 'busy' }[] = [];
+  for (const id of takeover) if (!used.has(id) && !incoming.some((x) => x.id === id)) incoming.push({ id, reason: 'alert' });
+  if (busiest && slots > 1 && !used.has(busiest) && !incoming.some((x) => x.id === busiest)) incoming.push({ id: busiest, reason: 'busy' });
+  const pinned: WallModel['pinned'] = base.map((id, i) => {
+    if (id) return { cam: byId.get(id) ?? null, reason: 'pinned' as const, slot: i };
+    const next = incoming.shift();
+    if (!next) return { cam: null, reason: 'pinned' as const, slot: i };
+    used.add(next.id);
+    return { cam: byId.get(next.id) ?? null, reason: next.reason, slot: i };
+  });
+
+  const pool = wall.rotation
+    .filter((id) => !used.has(id))
+    .map((id) => byId.get(id))
+    .filter((c): c is Camera => !!c);
+
+  // Rolling section: alert cameras that did not fit stay at the front.
+  const n = wall.rollingTiles;
+  const [page, setPage] = useState(0);
+  const [tickAt, setTickAt] = useState(() => Date.now());
+  // Another wall (or another camera view) starts from its first set.
+  useEffect(() => {
+    setPage(0);
+    setTickAt(Date.now());
+  }, [wall.id]);
+  // The next set comes rotateSec after the last change, whether that was the timer or someone stepping by hand.
+  useEffect(() => {
+    if (paused) return;
+    const t = window.setTimeout(() => {
+      setPage((p) => p + 1);
+      setTickAt(Date.now());
+    }, Math.max(0, wall.rotateSec * 1000 - (Date.now() - tickAt)));
+    return () => window.clearTimeout(t);
+  }, [wall.rotateSec, paused, wall.id, tickAt]);
+  // Cameras with an open alert stay on screen, most urgent first, but never take more than half of the rolling tiles (all of
+  // them when everything fits): with many alerts open the other cameras would otherwise never come round.
+  const alertCams = pool
+    .filter((c) => alertsByCam.has(c.id))
+    .sort((x, y) => PRIO_RANK[alertsByCam.get(x.id)!.priority] - PRIO_RANK[alertsByCam.get(y.id)!.priority] || alertsByCam.get(y.id)!.at - alertsByCam.get(x.id)!.at);
+  const sticky = alertCams.slice(0, pool.length <= n ? n : Math.max(1, Math.floor(n / 2)));
+  const stickyIds = new Set(sticky.map((c) => c.id));
+  const rest = pool.filter((c) => !stickyIds.has(c.id));
+  const per = Math.max(0, n - sticky.length);
+  const pages = Math.max(1, Math.ceil(rest.length / Math.max(1, per)));
+  const p = ((page % pages) + pages) % pages;
+  const start = p * per;
+  // The last set is topped up from the start of the list, so a wall never shows empty tiles while it has cameras to show.
+  const rolling = [...sticky, ...Array.from({ length: Math.min(per, rest.length) }, (_, i) => rest[(start + i) % rest.length])];
+  const secsLeft = paused ? wall.rotateSec : Math.max(0, wall.rotateSec - Math.floor((now - tickAt) / 1000));
+  /** Steps through the sets by hand: +1 next, -1 previous, or straight to a set with `to`. */
+  const go = (step: number, to?: number) => {
+    setPage((x) => (to !== undefined ? to : (((x % pages) + pages) % pages) + step));
+    setTickAt(Date.now());
+  };
+
+  return { pinned, rolling, pool, page: p, pages, alertsByCam, scopeAlerts, secsLeft, paused, go };
+}
+
+function gridStyle(layout: PinnedLayout) {
+  switch (layout) {
+    case '1':
+      return { gridTemplateColumns: '1fr', gridTemplateRows: '1fr' };
+    case '2x2':
+      return { gridTemplateColumns: 'repeat(2, 1fr)', gridTemplateRows: 'repeat(2, 1fr)' };
+    case '1+5':
+      return { gridTemplateColumns: 'repeat(3, 1fr)', gridTemplateRows: 'repeat(3, 1fr)' };
+    case '2x3':
+      return { gridTemplateColumns: 'repeat(3, 1fr)', gridTemplateRows: 'repeat(2, 1fr)' };
+    case '3x3':
+      return { gridTemplateColumns: 'repeat(3, 1fr)', gridTemplateRows: 'repeat(3, 1fr)' };
+  }
+}
+
+function rollingGrid(n: number, solo: boolean) {
+  if (solo) {
+    const cols = n >= 25 ? 5 : n >= 16 ? 4 : n >= 9 ? 3 : n >= 4 ? 2 : n;
+    return { gridTemplateColumns: `repeat(${cols}, 1fr)`, gridTemplateRows: `repeat(${Math.ceil(n / cols)}, 1fr)` };
+  }
+  const cols = n >= 6 ? 2 : 1;
+  return { gridTemplateColumns: `repeat(${cols}, 1fr)`, gridTemplateRows: `repeat(${Math.ceil(n / cols)}, 1fr)` };
+}
+
+export function WallBody({
+  wall,
+  model,
+  editing,
+  onAlert,
+  onOpen,
+  onPinToggle,
+  onDropCam,
+  onClearSlot,
+  height,
+}: {
+  wall: Wall;
+  model: LiveWallModel;
+  editing?: boolean;
+  /** The tile's priority badge was clicked: show this camera's alerts. */
+  onAlert?: (a: Alert) => void;
+  onOpen?: (cam: Camera) => void;
+  onPinToggle?: (cam: Camera, pinned: boolean) => void;
+  onDropCam?: (slot: number, camId: string) => void;
+  onClearSlot?: (slot: number) => void;
+  height: string;
+}) {
+  const now = useNow(1000);
+  const activity = useActivity();
+  const solo = wall.pinnedShare === 0;
+  const allPinned = wall.pinnedShare === 100;
+  const animate = model.pinned.length + (allPinned ? 0 : model.rolling.length) <= 10;
+  const [over, setOver] = useState<number | null>(null);
+  const live = useMemo(() => {
+    const order = [...model.pinned.map((p) => p.cam), ...(allPinned ? [] : model.rolling)];
+    const ids = new Set<string>();
+    for (const c of order) if (c?.source && c.status !== 'offline' && ids.size < MAX_LIVE_STREAMS) ids.add(c.id);
+    return ids;
+  }, [model.pinned, model.rolling, allPinned]);
+
+  const tile = (cam: Camera | null, key: string, opts: { reason?: 'pinned' | 'alert' | 'busy' | 'rolling'; slot?: number; big?: boolean }) => {
+    const alert = cam ? model.alertsByCam.get(cam.id) : undefined;
+    const drop =
+      editing && opts.slot !== undefined
+        ? {
+            onDragOver: (e: DragEvent) => {
+              e.preventDefault();
+              setOver(opts.slot!);
+            },
+            onDragLeave: () => setOver(null),
+            onDrop: (e: DragEvent) => {
+              e.preventDefault();
+              setOver(null);
+              const id = e.dataTransfer.getData('text/camera');
+              if (id) onDropCam?.(opts.slot!, id);
+            },
+          }
+        : {};
+    const cls = ['wtile', opts.big ? 'wtile--big' : '', alert ? `wtile--alert wtile--${alert.priority}` : '', editing && over === opts.slot ? 'wtile--over' : ''].filter(Boolean).join(' ');
+    if (!cam)
+      return (
+        <div key={key} className={`${cls} wtile--empty`} {...drop}>
+          <Icon name="plus" size={22} />
+          <span>{editing ? 'Drag a camera here' : 'Empty slot'}</span>
+        </div>
+      );
+    return (
+      <div
+        key={key}
+        className={`${cls}${onOpen && !editing ? ' wtile--open' : ''}`}
+        {...drop}
+        // Clicking the picture opens the same camera information as the (i) button; the buttons on the tile keep their own jobs.
+        onClick={onOpen && !editing ? (e) => !(e.target as HTMLElement).closest('button') && onOpen(cam) : undefined}
+        title={onOpen && !editing ? `${cam.id} · Camera Information` : undefined}
+      >
+        <CameraView cam={cam} still={!animate || (!!cam.source && !live.has(cam.id))} alert={alert} now={now} className="wtile__view" />
+        <div className="wtile__top">
+          {opts.reason === 'alert' && (
+            <span className="wtile__tag wtile__tag--alert" title="Alert Takeover">
+              <Icon name="warning" size={13} stroke={2.2} />
+              <span className="wtile__label">Alert takeover</span>
+            </span>
+          )}
+          {opts.reason === 'pinned' && (
+            <span className="wtile__tag" title="Pinned: High-operational Area">
+              <Icon name="pin" size={13} />
+              <span className="wtile__label">Pinned</span>
+            </span>
+          )}
+          {opts.reason === 'busy' && (
+            <span className="wtile__tag wtile__tag--busy" title="Auto-pinned: The Busiest Camera On This Wall Right Now">
+              <Icon name="activity" size={13} />
+              <span className="wtile__label">Busiest now</span>
+            </span>
+          )}
+          <span className="spacer" />
+          {cam.status !== 'offline' && (
+            <span className="wtile__tag" title="People And Vehicles In View">
+              <Icon name="user" size={13} />
+              {activity[cam.id] ?? 0}
+            </span>
+          )}
+          {!editing && (
+            <span className="wtile__actions">
+              {onPinToggle && opts.reason !== 'alert' && (
+                <button type="button" title={opts.reason === 'pinned' ? 'Unpin from this wall' : 'Pin to this wall'} aria-label={opts.reason === 'pinned' ? `Unpin ${cam.id}` : `Pin ${cam.id}`} onClick={() => onPinToggle(cam, opts.reason === 'pinned')}>
+                  <Icon name={opts.reason === 'pinned' ? 'unpin' : 'pin'} size={15} />
+                </button>
+              )}
+              {onOpen && (
+                <button type="button" title="Camera Information" aria-label={`Information about ${cam.id}`} onClick={() => onOpen(cam)}>
+                  <Icon name="info" size={15} stroke={2} />
+                </button>
+              )}
+            </span>
+          )}
+          {editing && opts.slot !== undefined && opts.reason === 'pinned' && (
+            <span className="wtile__actions wtile__actions--on">
+              <button type="button" aria-label={`Remove ${cam.id} from slot`} title="Remove From This Slot" onClick={() => onClearSlot?.(opts.slot!)}>
+                <Icon name="close" size={15} />
+              </button>
+            </span>
+          )}
+        </div>
+        {alert && (
+          <button
+            type="button"
+            className={`wtile__prio wtile__prio--${alert.priority}`}
+            disabled={!onAlert}
+            onClick={() => onAlert?.(alert)}
+            title={`${alert.priority} ${PRIORITY_NAME[alert.priority]} · ${alert.title} · ${ago(alert.at, now)}. Click to see this camera's alerts.`}
+            aria-label={`${alert.priority} ${PRIORITY_NAME[alert.priority]} alert on ${cam.id}. Show this camera's alerts`}
+          >
+            <Icon name="warning" size={16} stroke={2.2} />
+            {alert.priority}
+          </button>
+        )}
+      </div>
+    );
+  };
+
+  const rollingSlots = Math.max(model.rolling.length, Math.min(wall.rollingTiles, model.pool.length));
+
+  return (
+    <div className={`wall${editing ? ' wall--editing' : ''}`} style={{ height }}>
+      {!solo && (
+        <section className="wall__pinned" style={{ flexBasis: allPinned ? '100%' : `${wall.pinnedShare}%`, ...gridStyle(wall.pinnedLayout) }} aria-label="Pinned cameras">
+          {model.pinned.map((p, i) => tile(p.cam, `p${i}`, { reason: p.reason, slot: p.reason === 'pinned' ? p.slot : undefined, big: wall.pinnedLayout === '1+5' && i === 0 }))}
+        </section>
+      )}
+      {!allPinned && (
+        <section className="wall__rolling" style={{ flexBasis: solo ? '100%' : `${100 - wall.pinnedShare}%` }} aria-label="Rolling cameras">
+          <div className="wall__rolling-grid" style={rollingGrid(wall.rollingTiles, solo)}>
+            {Array.from({ length: Math.min(wall.rollingTiles, Math.max(rollingSlots, 1)) }).map((_, i) => {
+              const cam = model.rolling[i];
+              return cam ? tile(cam, `r${cam.id}`, { reason: model.alertsByCam.has(cam.id) ? 'alert' : 'rolling' }) : <div key={`re${i}`} className="wtile wtile--empty" />;
+            })}
+          </div>
+          <div className="wall__progress" aria-hidden="true">
+            <span key={`${model.page}-${wall.rotateSec}`} style={{ animationDuration: `${wall.rotateSec}s`, animationPlayState: model.paused ? 'paused' : 'running' }} />
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}

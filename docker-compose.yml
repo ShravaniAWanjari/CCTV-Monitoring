@@ -1,0 +1,15 @@
+# GYT CCTV on one PC. Start it with ./start.sh (macOS / Linux) or start.cmd (Windows): they pick a free
+# port, run `docker compose up -d` and print the address to open. Plain `docker compose up -d` also works while port 8830 is
+# free. The first start builds the image, which is about 5 GB on disk.
+services:
+  cctv:
+    build: .
+    image: gyt-cctv:local
+    ports:
+      - "127.0.0.1:${CCTV_PORT:-8830}:8830"      # this PC only; start.sh / start.cmd put a free port in .env as CCTV_PORT
+    volumes:
+      - cctv-data:/data              # cameras, rules, uploaded videos and alert pictures survive restarts
+    restart: unless-stopped
+
+volumes:
+  cctv-data:

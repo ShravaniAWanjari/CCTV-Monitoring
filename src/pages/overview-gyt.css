@@ -1,0 +1,247 @@
+/* GYT redesign of the Overview (Action centre and Insights).
+   Palette: red, black, white and two greys only (tokens.css --g-*). Red is kept for what needs action: P1, overdue,
+   unread, not reported. Type: IBM Plex Sans, with Plex Mono for IDs, times and counts. Sentence case, no capitalised words.
+   Everything is scoped under .gyt, so the other screens keep their look until they are redone. */
+
+.gyt, body:has(.gyt) .apop, body:has(.gyt) .scrim {
+  /* Every page token remapped to the GYT palette, so the components inside (badges, bars, chips) follow without edits. */
+  --q-canvas: var(--g-canvas);
+  --q-surface: var(--g-white);
+  --q-surface-2: var(--g-canvas);
+  --q-border: var(--g-light);
+  --q-divider: var(--g-light);
+  --q-border-strong: var(--g-light);
+  --q-border-input: var(--g-light);
+  --q-ink: var(--g-black);
+  --q-ink-2: var(--g-grey);
+  --q-muted: var(--g-grey);
+  --q-faint: var(--g-grey-2);
+  --q-ai: var(--g-black);
+  --q-ai-ink: var(--g-black);
+  --q-ai-ink-hover: var(--g-black);
+  --q-ai-tint: var(--g-hover);
+  --q-ai-wash: var(--g-hover);
+  --q-ai-border: var(--g-light);
+  --q-ai-divider: var(--g-light);
+  --q-danger: var(--g-red);
+  --q-danger-bg: var(--g-red-wash);
+  --q-danger-border: color-mix(in srgb, var(--g-red) 30%, var(--g-white));
+  --q-rising: var(--g-red);
+  --q-rising-bg: var(--g-red-wash);
+  --q-rising-border: color-mix(in srgb, var(--g-red) 30%, var(--g-white));
+  --q-warn: var(--g-black);
+  --q-warn-bg: var(--g-hover);
+  --q-warn-border: var(--g-light);
+  --q-warn-dot: var(--g-grey-2);
+  --q-good: var(--g-grey);
+  --q-good-bg: var(--g-hover);
+  --q-good-border: var(--g-light);
+  --q-live: var(--g-black);
+  --q-p1: var(--g-red);
+  --q-p2: var(--g-black);
+  --q-p3: var(--g-grey);
+  --q-p4: var(--g-grey-2);
+  --q-p4-ink: var(--g-white);
+  --q-chart-1: var(--g-black);
+  --q-chart-2: var(--g-grey);
+  --q-chart-3: var(--g-red);
+  --q-chart-4: var(--g-grey-2);
+  --q-chart-5: var(--g-light);
+  --c-blue: var(--g-black);
+  --c-blue-dark: var(--g-black);
+  --c-blue-wash: var(--g-hover);
+  --c-red: var(--g-red);
+  --c-red-wash: var(--g-red-wash);
+  --c-orange: var(--g-black);
+  --c-orange-wash: var(--g-hover);
+  --c-brown: var(--g-grey);
+  --c-yellow: var(--g-grey-2);
+  --c-green: var(--g-grey);
+  --c-green-wash: var(--g-hover);
+  --c-violet: var(--g-grey);
+  --c-grey: var(--g-grey);
+  --c-light: var(--g-light);
+  --c-wash: var(--g-canvas);
+  --c-black: var(--g-black);
+  --q-r-sm: 4px;
+  --q-r: 6px;
+  --q-r-lg: 8px;
+  --q-shadow-card: none;
+  font-family: var(--g-font);
+  text-transform: none;
+  color: var(--g-black);
+  font-feature-settings: 'ss02' on;     /* Plex: the simpler single-storey a reads better at small sizes */
+}
+.gyt ::placeholder, .gyt button, .gyt select { text-transform: none; }
+body:has(.gyt-ov) { background: var(--g-canvas); }
+.gyt .mono, .gyt .kpi__n, .gyt .ovsla, .gyt .ovcam__since, .gyt .ovcam__id, .gyt .ovgap__n { font-family: var(--g-mono); font-variant-numeric: tabular-nums; }
+
+/* ── Page header: what this is, where, and the two things you do from here ─────────────────────── */
+.ovhead { display: flex; align-items: flex-end; gap: 24px; flex-wrap: wrap; margin: 4px 0 24px; }
+.ovhead__title { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.ovhead h1 { font-size: 26px; line-height: 32px; font-weight: 600; letter-spacing: -.015em; color: var(--g-black); }
+.ovhead__sub { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13.5px; color: var(--g-grey); }
+.ovhead__sep { width: 3px; height: 3px; border-radius: 50%; background: var(--g-grey-2); }
+.ovhead__live { display: inline-flex; align-items: center; gap: 7px; color: var(--g-black); font-weight: 500; }
+.ovhead__live i { width: 7px; height: 7px; border-radius: 50%; background: var(--g-black); box-shadow: 0 0 0 3px var(--g-light); }
+.ovhead__actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+
+/* Segmented control */
+.seg { display: inline-flex; padding: 3px; gap: 2px; border-radius: 8px; background: var(--g-light); }
+.gyt .seg button { text-transform: none; letter-spacing: 0; }
+.seg button { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 14px; border: 0; border-radius: 6px; background: transparent; color: var(--g-grey); font-size: 13.5px; font-weight: 500; }
+.seg button:hover { color: var(--g-black); }
+.seg button[aria-selected='true'] { background: var(--g-white); color: var(--g-black); box-shadow: 0 1px 2px color-mix(in srgb, var(--g-black) 12%, transparent); }
+.seg__n { min-width: 20px; height: 18px; padding: 0 6px; border-radius: 9px; background: var(--g-red); color: var(--g-white); font-family: var(--g-mono); font-size: 11px; font-weight: 500; line-height: 18px; text-align: center; }
+
+/* Buttons */
+.gbtn { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border: 1px solid var(--g-light); border-radius: 6px; background: var(--g-white); color: var(--g-black); font-size: 13.5px; font-weight: 500; white-space: nowrap; text-decoration: none; }
+.gbtn:hover { border-color: var(--g-grey-2); color: var(--g-black); text-decoration: none; }
+.gbtn--primary { background: var(--g-black); border-color: var(--g-black); color: var(--g-white); }
+.gbtn--primary:hover { background: color-mix(in srgb, var(--g-black) 85%, var(--g-white)); border-color: transparent; color: var(--g-white); }
+.gyt .ovexport .btn { min-height: 36px; width: 36px; height: 36px; padding: 0; border-radius: 6px; background: var(--g-white); border: 1px solid var(--g-light); color: var(--g-black); }
+.gyt .ovexport .btn:hover { border-color: var(--g-grey-2); background: var(--g-white); color: var(--g-black); }
+.gyt .ovexport .btn svg { width: 17px; height: 17px; }
+.gyt .ovbar { margin: -8px 0 20px; }
+.gyt .ovbar .btn { min-height: 36px; }
+
+.gbtn.is-on { background: var(--g-black); border-color: var(--g-black); color: var(--g-white); }
+.gbtn--icon { width: 36px; padding: 0; justify-content: center; }
+.gbtn--sm { height: 32px; padding: 0 12px; font-size: 13px; }
+.gbtn--icon.gbtn--sm { width: 32px; padding: 0; }
+.gbtn:disabled { opacity: .45; cursor: not-allowed; }
+.gbtn--danger { color: var(--g-red); }
+.gbtn--danger:hover { border-color: var(--g-red); color: var(--g-red); background: var(--g-red-wash); }
+.gbtn--quiet { border-color: transparent; background: none; color: var(--g-grey); }
+.gbtn--quiet:hover { border-color: var(--g-light); color: var(--g-black); }
+
+/* ── Grid and cards ────────────────────────────────────────────────────────────────────────────── */
+.gyt .ovgrid { gap: 20px; }
+.gyt .card { border-radius: 8px; border: 1px solid var(--g-light); box-shadow: none; }
+.gyt .card__head, .gyt .ovgrid .card__head { min-height: 52px; padding: 0 20px; border-bottom: 1px solid var(--g-light); gap: 10px; }
+.gyt .card__head h2 { font-size: 14.5px; font-weight: 600; letter-spacing: -.005em; }
+.gyt .ovsub { color: var(--g-grey); font-weight: 400; font-size: 13.5px; }
+.gyt .ovlink { color: var(--g-black); font-size: 13px; font-weight: 500; text-decoration: underline; text-decoration-color: var(--g-light); text-underline-offset: 4px; }
+.gyt .ovlink:hover { text-decoration-color: var(--g-black); }
+.gyt .ovgrid__8 { grid-column: span 8; }
+.gyt .ovgrid__4 { grid-column: span 4; }
+.ovside { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.ovside > .card { flex: 0 0 auto; }
+.gyt .ovside .ovcol__list { max-height: 232px; }
+
+/* ── KPI strip: four numbers, one line, dividers between ───────────────────────────────────────── */
+.gyt .ovkpis .ovcol__pair { grid-template-columns: repeat(4, minmax(0, 1fr)); border-bottom: 0; }
+.gyt .ovkpis .ovcol__stat { padding: 18px 22px 16px; gap: 8px; border: 0; border-left: 1px solid var(--g-light); border-radius: 0; }
+.gyt .ovkpis .ovcol__stat:first-child { border-left: 0; }
+.gyt .ovkpis .ovcol__stat:nth-child(n + 3) { border-top: 0; }
+.gyt .ovkpis .ovcol__stat:nth-child(3) { border-left: 1px solid var(--g-light); }
+.gyt .ovcol__stat:hover, .gyt .ovcol > .ovcol__kpi:hover { background: var(--g-hover); }
+.gyt .kpi__label { font-size: 12px; font-weight: 500; letter-spacing: .04em; text-transform: uppercase; color: var(--g-grey); }
+.gyt .kpi__icon { display: none; }
+.gyt .kpi__n { font-size: 30px; line-height: 36px; font-weight: 500; letter-spacing: -.02em; }
+.gyt .kpi__of { font-family: var(--g-mono); font-size: 13px; color: var(--g-grey-2); }
+.gyt .kpi__foot { font-size: 12.5px; color: var(--g-grey); }
+.gyt .kdelta { height: 20px; padding: 0 7px; border-radius: 4px; font-size: 11.5px; font-weight: 500; }
+.gyt .kdelta--bad { background: var(--g-red-wash); color: var(--g-red); }
+.gyt .kdelta--neutral, .gyt .kdelta--good { background: var(--g-canvas); color: var(--g-grey); }
+.gyt .segbar { height: 4px; border-radius: 2px; gap: 2px; }
+.gyt .seglg { font-size: 11.5px; color: var(--g-grey); gap: 12px; }
+.gyt .seglg i { width: 6px; height: 6px; border-radius: 50%; }
+
+/* Side panels: their headline number sits in a compact header block */
+.gyt .ovside .ovcol__kpi { padding: 16px 20px 14px; gap: 8px; border-bottom: 1px solid var(--g-light); }
+.gyt .ovside .kpi__n { font-size: 24px; line-height: 28px; }
+.gyt .ovsend { align-self: flex-start; margin-top: 4px; height: 32px; min-height: 32px; padding: 0 12px; border-radius: 6px; background: var(--g-red); border: 1px solid var(--g-red); color: var(--g-white); font-size: 12.5px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+.gyt .ovsend:hover { background: color-mix(in srgb, var(--g-red) 88%, var(--g-black)); border-color: transparent; color: var(--g-white); }
+
+/* ── Lists: one issue per row, priority, what, where, time, one action ─────────────────────────── */
+.gyt .ovcol__list { max-height: 420px; }
+.gyt .ovwatch .ovcol__list { max-height: none; }
+.gyt .ovissue { gap: 12px; padding-right: 16px; border-top: 1px solid var(--g-light); }
+.gyt .ovissue:first-child { border-top: 0; }
+.gyt .ovlist__item { gap: 14px; min-height: 56px; padding: 10px 4px 10px 20px; border-top: 0; }
+.gyt .ovlist__item:hover { background: none; }
+.gyt .ovissue:hover { background: var(--g-hover); }
+.gyt .ovlist__item strong { font-size: 13.5px; font-weight: 500; color: var(--g-black); }
+.gyt .ovlist__item .meta { font-size: 12.5px; color: var(--g-grey); }
+.gyt .ovissue__n { margin-left: 8px; padding: 0 6px; border-radius: 4px; background: var(--g-canvas); color: var(--g-grey); font-family: var(--g-mono); font-size: 11px; font-weight: 500; }
+.gyt .ovsla { flex: 0 0 auto; font-family: var(--g-mono); font-size: 12px; color: var(--g-grey); white-space: nowrap; text-decoration: none; }
+.gyt .ovsla.is-late { color: var(--g-red); font-weight: 500; }
+
+/* Priority tags: P1 red, P2 black, P3 grey outline, P4 light outline */
+.gyt .prio { height: 20px; padding: 0 6px; min-width: 28px; justify-content: center; border-radius: 4px; font-family: var(--g-mono); font-size: 11px; font-weight: 500; letter-spacing: 0; border: 1px solid transparent; }
+.gyt .prio svg { display: none; }
+.gyt .prio--P1 { background: var(--g-red); color: var(--g-white); border-color: var(--g-red); }
+.gyt .prio--P2 { background: var(--g-black); color: var(--g-white); border-color: var(--g-black); }
+.gyt .prio--P3 { background: var(--g-white); color: var(--g-black); border-color: var(--g-grey-2); }
+.gyt .prio--P4 { background: var(--g-white); color: var(--g-grey); border-color: var(--g-light); }
+
+/* Row actions */
+.gyt .lvact { height: 28px; padding: 0 10px; gap: 6px; border: 1px solid var(--g-light); border-radius: 6px; background: var(--g-white); color: var(--g-black); font-size: 12.5px; font-weight: 500; text-transform: none; letter-spacing: 0; }
+.gyt .lvact:hover { background: var(--g-white); border-color: var(--g-black); color: var(--g-black); }
+.gyt .lvact--report { color: var(--g-red); border-color: color-mix(in srgb, var(--g-red) 35%, var(--g-white)); background: var(--g-white); }
+.gyt .lvact--report:hover { border-color: var(--g-red); background: var(--g-red-wash); color: var(--g-red); }
+
+/* Camera health */
+.gyt .ovcam { min-height: 44px; padding: 0 20px; gap: 12px; border-bottom: 1px solid var(--g-light); font-size: 13px; }
+.gyt .ovcam:hover { background: var(--g-hover); }
+.gyt .ovcam.ovcam--head { min-height: 32px; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--g-grey); font-weight: 500; }
+.gyt .ovcam--head .ovcam__id, .gyt .ovcam--head .ovcam__state, .gyt .ovcam--head .ovcam__since { font-family: var(--g-font); font-size: 11px; font-weight: 500; color: var(--g-grey); }
+.gyt .ovcam__id { font-weight: 500; font-size: 12.5px; }
+.gyt .dot--offline { background: var(--g-red); }
+.gyt .dot--degraded { background: var(--g-grey-2); }
+.gyt .ovcol__subhead { min-height: 40px; }
+
+/* Coverage gaps */
+.gyt .ovgap { padding: 18px 20px; border-right: 1px solid var(--g-light); }
+.gyt .ovgap__n { font-size: 24px; font-weight: 500; color: var(--g-black); }
+.gyt .ovgap__n.is-alert { color: var(--g-red); }
+.gyt .ovgap__head strong { font-size: 13.5px; font-weight: 600; }
+.gyt .ovgap__list { font-size: 13px; gap: 8px; }
+.gyt .ovgap__list a { color: var(--g-black); }
+.gyt .ovgap__list a:hover { color: var(--g-black); text-decoration: underline; }
+.gyt .ovgap__more { color: var(--g-black); font-weight: 500; text-decoration: underline; text-underline-offset: 3px; }
+
+/* New-alert pop-ups sit bottom right on this screen, clear of the header's actions */
+body:has(.gyt) .apop { top: auto; bottom: 20px; }
+
+/* Narrower screens */
+@media (max-width: 1180px) {
+  .gyt .ovgrid__8, .gyt .ovgrid__4 { grid-column: span 12; }
+  .ovside { flex-direction: row; }
+  .ovside > .card { flex: 1 1 0; min-width: 0; }
+}
+@media (max-width: 900px) {
+  .gyt .ovkpis .ovcol__pair { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .gyt .ovkpis .ovcol__stat:nth-child(3) { border-left: 0; }
+  .gyt .ovkpis .ovcol__stat:nth-child(n + 3) { border-top: 1px solid var(--g-light); }
+  .ovside { flex-direction: column; }
+  .gyt .ovgaps { grid-template-columns: 1fr; }
+  .gyt .ovgap { border-right: 0; border-bottom: 1px solid var(--g-light); }
+}
+@media (max-width: 760px) { body:has(.gyt) .apop { bottom: calc(84px + env(safe-area-inset-bottom)); } }
+@media (max-width: 640px) {
+  .ovhead { align-items: stretch; gap: 14px; }
+  .ovhead__actions { margin-left: 0; width: 100%; }
+  .ovhead__actions .seg { flex: 1; }
+  .ovhead__actions .seg button { flex: 1; justify-content: center; }
+  .ovhead__actions .gbtn--primary { display: none; }      /* the wall is in the bottom bar on a phone */
+  .ovhead h1 { font-size: 22px; line-height: 28px; }
+  .gyt .kpi__n { font-size: 26px; }
+  .gyt .ovsla { display: none; }
+}
+
+/* ── Dialogs on the GYT screens (camera window, cast, confirm, alert actions): same palette and buttons ───────── */
+body:has(.gyt) .scrim *, body:has(.gyt) .scrim ::placeholder { text-transform: none; letter-spacing: 0; }
+body:has(.gyt) .scrim .modal { border-radius: 8px; }
+body:has(.gyt) .scrim .modal h2, body:has(.gyt) .scrim .modal h3 { font-weight: 600; }
+body:has(.gyt) .scrim .btn { min-height: 34px; height: 34px; padding: 0 14px; border-radius: 6px; border: 1px solid var(--g-black); background: var(--g-black); color: var(--g-white); font-size: 13px; font-weight: 500; }
+body:has(.gyt) .scrim .btn:hover { background: color-mix(in srgb, var(--g-black) 85%, var(--g-white)); color: var(--g-white); }
+body:has(.gyt) .scrim .btn--secondary, body:has(.gyt) .scrim .btn--ghost { background: var(--g-white); border-color: var(--g-light); color: var(--g-black); }
+body:has(.gyt) .scrim .btn--secondary:hover, body:has(.gyt) .scrim .btn--ghost:hover { background: var(--g-white); border-color: var(--g-grey-2); color: var(--g-black); }
+body:has(.gyt) .scrim .btn--danger { background: var(--g-red); border-color: var(--g-red); color: var(--g-white); }
+body:has(.gyt) .scrim .btn--danger:hover { background: color-mix(in srgb, var(--g-red) 88%, var(--g-black)); }
+body:has(.gyt) .scrim .btn--icon { width: 34px; padding: 0; }
+body:has(.gyt) .scrim .switch { font-size: 13.5px; font-weight: 500; }
+body:has(.gyt) .scrim .kv dt { color: var(--g-grey); font-weight: 400; }
+body:has(.gyt) .scrim .mono { font-family: var(--g-mono); }

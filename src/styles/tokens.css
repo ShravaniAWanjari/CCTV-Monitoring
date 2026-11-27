@@ -1,0 +1,144 @@
+/* THE ONE PLACE FOR COLOUR.
+   Nine colours, one shade each, from the original design:
+   red, orange, green, violet, grey, light grey and black, the sky blue, plus a dark blue kept for a few accents, and
+   white. No other shade of any of them is used.
+   Pale backgrounds are these same colours mixed with white or made see-through, never a new hue.
+   Nothing else in src/ may write a hex or rgb value: CSS uses var(--c-*) or the --q-* names below, TypeScript uses
+   cssVar('--c-*') from ./colors.ts. `npm run check:colors` fails the build if that slips. */
+:root {
+  --c-red: #DC2626;
+  --c-blue: #0EA5E9;            /* Sky blue: buttons, active pills, focus, everything blue in the content */
+  --c-sidebar: #35B9F1;         /* Sidebar blue: the sidebar only */
+  --c-blue-dark: #2563EB;       /* dark blue for KPI cards and charts: accents only (chart lines, links) */
+  --c-orange: #EA580C;
+  --c-brown: #B45309;           /* P3 */
+  --c-yellow: #FFC72C;          /* P4: mango yellow */
+  --c-green: #16A34A;
+  --c-violet: #7C3AED;
+  --c-grey: #64748B;
+  --c-light: #E5E9F0;           /* light grey: borders, dividers, chips */
+  --c-black: #000000;
+  --c-white: #FFFFFF;
+  /* The side menu keeps its own colours. */
+  --c-menu-bg: #0F242A;         /* flyout panel and the selected sidebar item */
+  --c-menu-ink: #0C323D;        /* sidebar hover and the dim layer behind the menu */
+  --c-menu-text: #899397;       /* tile labels at rest */
+  --c-menu-hover: #005972;      /* submenu hover */
+  --c-logo-halo: #009FE3;       /* halo behind the collapsed sidebar logo */
+  --c-logo-glow: color-mix(in srgb, #F4EC94 40%, transparent);
+
+  /* GYT palette: red, black, white and two greys. The redesigned screens use only these (scoped under .gyt). */
+  --g-red: #C8102E;            /* signal red: P1, overdue, the one thing to act on */
+  --g-black: #111113;          /* ink, P2, primary buttons */
+  --g-grey: #6E6E76;           /* secondary text, P3 */
+  --g-grey-2: #A3A3AA;         /* quiet text, P4, icons at rest */
+  --g-light: #E6E6E9;          /* lines and borders */
+  --g-canvas: #F4F4F5;         /* page background */
+  --g-white: #FFFFFF;
+  --g-red-wash: color-mix(in srgb, var(--g-red) 8%, var(--g-white));
+  --g-hover: color-mix(in srgb, var(--g-light) 55%, var(--g-white));
+
+  /* Derived from the eight, not new colours */
+  --c-wash: color-mix(in srgb, var(--c-light) 40%, var(--c-white));   /* page background */
+  --c-red-wash: color-mix(in srgb, var(--c-red) 10%, var(--c-white));
+  --c-blue-wash: color-mix(in srgb, var(--c-blue) 10%, var(--c-white));
+  --c-orange-wash: color-mix(in srgb, var(--c-orange) 12%, var(--c-white));
+  --c-green-wash: color-mix(in srgb, var(--c-green) 10%, var(--c-white));
+  --c-violet-wash: color-mix(in srgb, var(--c-violet) 10%, var(--c-white));
+
+  /* ── Names the pages use ───────────────────────────────────────────────────────────────────────────── */
+  --q-canvas: var(--c-wash);
+  --q-surface: var(--c-white);
+  --q-surface-2: var(--c-wash);
+  --q-border: var(--c-light);
+  --q-divider: var(--c-light);
+  --q-border-strong: var(--c-light);
+  --q-border-input: var(--c-light);
+
+  --q-ink: var(--c-black);              /* headings, table text, labels, active tab */
+  --q-ink-2: var(--c-grey);
+  --q-muted: var(--c-grey);             /* body, input values, inactive tabs */
+  --q-faint: var(--c-grey);             /* placeholder chrome */
+
+  --q-dock: var(--c-sidebar);              /* sidebar */
+  --q-dock-active: var(--c-menu-ink);   /* selected item = hover item */
+  --q-dock-text: var(--c-white);
+  --q-dock-sep: color-mix(in srgb, var(--c-white) 25%, transparent);
+  --q-dock-avatar: var(--c-black);
+  --q-dock-ai: var(--c-white);
+  --q-dock-badge: var(--c-sidebar);
+
+  /* Brand blue. Anything the assistant drafted stays visibly distinct: a pale wash and a blue border. */
+  --q-ai: var(--c-blue);
+  --q-ai-ink: var(--c-blue);
+  --q-ai-ink-hover: var(--c-blue);
+  --q-ai-deep: var(--c-black);
+  --q-ai-tint: color-mix(in srgb, var(--c-blue) 12%, var(--c-white));
+  --q-ai-wash: var(--c-blue-wash);
+  --q-ai-border: color-mix(in srgb, var(--c-blue) 40%, var(--c-white));
+  --q-ai-divider: color-mix(in srgb, var(--c-blue) 22%, var(--c-white));
+
+  --q-rising: var(--c-orange);
+  --q-rising-bg: var(--c-orange-wash);
+  --q-rising-border: color-mix(in srgb, var(--c-orange) 35%, var(--c-white));
+  --q-danger: var(--c-red);
+  --q-danger-bg: var(--c-red-wash);
+  --q-danger-border: color-mix(in srgb, var(--c-red) 35%, var(--c-white));
+  --q-warn: var(--c-orange);
+  --q-warn-bg: color-mix(in srgb, var(--c-orange) 10%, transparent);
+  --q-warn-border: color-mix(in srgb, var(--c-orange) 35%, transparent);
+  --q-warn-dot: var(--c-orange);
+  --q-good: var(--c-green);
+  --q-good-bg: var(--c-green-wash);
+  --q-good-border: color-mix(in srgb, var(--c-green) 35%, var(--c-white));
+  --q-live: var(--c-green);
+
+  /* Alert levels: P1 red, P2 orange, P3 brown, P4 mango yellow. Text is white on the first three and black on P4. */
+  --q-p1: var(--c-red);
+  --q-p2: var(--c-orange);
+  --q-p3: var(--c-brown);
+  --q-p4: var(--c-yellow);
+  --q-p4-ink: var(--c-black);
+
+  --q-night: var(--c-black);
+  --q-night-2: var(--c-black);
+  --q-night-3: var(--c-grey);
+  --q-night-line: var(--c-grey);
+  --q-night-text: var(--c-white);
+  --q-night-muted: var(--c-light);
+  --q-night-accent: var(--c-blue);
+  --q-heat-incident: var(--c-red);
+  --q-heat-high: var(--c-orange);
+
+  /* chart colours */
+  --q-chart-1: var(--c-blue-dark);
+  --q-chart-2: var(--c-green);
+  --q-chart-3: var(--c-orange);
+  --q-chart-4: var(--c-violet);
+  --q-chart-5: var(--c-grey);
+
+  --q-font: 'Exo 2', sans-serif;
+  --g-font: 'IBM Plex Sans', system-ui, sans-serif;
+  --g-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  /* IDs and clock times: Exo 2 like everything else, with even-width digits so columns of them still line up. */
+  --q-mono: 'Exo 2', sans-serif;
+
+  /* Shape: 4px controls, 6px KPI cards, 10px inner cards, 12px panels, pills fully round */
+  --q-r-sm: 4px;
+  --q-r: 6px;
+  --q-r-md: 10px;
+  --q-r-lg: 12px;
+  --q-r-xl: 12px;
+  --q-r-pill: 999px;
+  --q-shadow-card: 0 1px 2px color-mix(in srgb, var(--c-slate-900) 4%, transparent);
+  --q-shadow-pop: 0 6px 18px color-mix(in srgb, var(--c-slate-900) 16%, transparent);
+  --q-shadow-seg: 0 1px 2px color-mix(in srgb, var(--c-slate-900) 4%, transparent);
+
+  --q-header-h: 64px;
+  --q-side-w: 0px;
+  --q-side-open-w: 262px;
+  --q-inset-l: 32px;
+  --q-inset-r: 32px;
+  --q-dock-w: 78px;
+  --q-page-max: none;
+}

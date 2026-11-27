@@ -1,0 +1,202 @@
+/* GYT redesign of the Cameras tab: the camera list and the camera set-up. Palette, type and buttons come from overview-gyt.css;
+   the status tabs and search field reuse the Alerts pieces (.gal__n, .gal__search, .gal__clear). */
+
+body:has(.gcams), body:has(.gcs) { background: var(--g-canvas); }
+.gcams .mono, .gcs .mono { font-family: var(--g-mono); font-variant-numeric: tabular-nums; }
+.page.gcams { display: flex; flex-direction: column; gap: 16px; }
+
+/* Header */
+.gcams__head { display: flex; align-items: flex-end; gap: 12px 24px; flex-wrap: wrap; }
+.gcams__head h1, .gcs__title h1 { font-size: 26px; line-height: 32px; font-weight: 600; letter-spacing: -.015em; }
+.gcams__head .ovhead__actions { margin-left: auto; }
+
+/* Tools: set-up tabs, then search, department, work area and the view */
+.gcams__tools { border: 1px solid var(--g-light); border-radius: 8px; background: var(--g-white); }
+.gcams__tabs { display: flex; gap: 2px; padding: 0 10px; border-bottom: 1px solid var(--g-light); overflow-x: auto; scrollbar-width: none; }
+.gcams__tabs button { position: relative; display: inline-flex; align-items: center; gap: 7px; height: 44px; padding: 0 10px; border: 0; background: none; color: var(--g-grey); font: inherit; font-size: 13.5px; font-weight: 500; white-space: nowrap; cursor: pointer; }
+.gcams__tabs button:hover, .gcams__tabs button[aria-selected='true'] { color: var(--g-black); }
+.gcams__tabs button[aria-selected='true']::after { content: ''; position: absolute; left: 8px; right: 8px; bottom: -1px; height: 2px; background: var(--g-black); }
+.gal__n.is-dark { background: var(--g-black); color: var(--g-white); }
+.gcams__filters { display: flex; align-items: center; gap: 10px; padding: 10px 12px; flex-wrap: wrap; }
+.gcams__search { flex: 0 1 280px; margin: 0; }
+.gcams .msel { flex: 0 1 220px; }
+.gcams .msel__label { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); }
+.gcams .msel__box { height: 36px; border-color: var(--g-light); border-radius: 6px; }
+.gcams .msel__row { top: 8px; }
+.gcams .msel__value, .gcams .msel__value.is-empty, .gcams .msel__search { font-size: 13.5px; }
+.gcams .msel__arrow { top: 15px; }
+.gcams .msel__clear { top: 8px; }
+.gcams .msel.is-open .msel__box, .gcams .msel__box:focus-within { border-color: var(--g-black); box-shadow: none; }
+.gcams__count { font-size: 12.5px; color: var(--g-grey); white-space: nowrap; }
+.gcams__views { display: inline-flex; border: 1px solid var(--g-light); border-radius: 6px; overflow: hidden; }
+.gcams__views button { width: 34px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; background: var(--g-white); color: var(--g-grey); cursor: pointer; }
+.gcams__views button + button { border-left: 1px solid var(--g-light); }
+.gcams__views button:hover { color: var(--g-black); }
+.gcams__views button[aria-pressed='true'] { background: var(--g-black); color: var(--g-white); }
+.gcams__empty { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 56px 20px; border: 1px solid var(--g-light); border-radius: 8px; background: var(--g-white); color: var(--g-grey); font-size: 13px; }
+.gcams__empty strong { color: var(--g-black); font-weight: 500; font-size: 15px; }
+
+/* Set-up state: "Ready", or three small bars and the next step */
+.gsetup { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: var(--g-black); white-space: nowrap; }
+.gsetup.is-todo { color: var(--g-red); }
+.gsetup i { display: inline-flex; gap: 2px; }
+.gsetup b { width: 8px; height: 4px; border-radius: 1px; background: var(--g-light); }
+.gsetup b.is-on { background: var(--g-black); }
+.gstatus { font-size: 12px; font-weight: 500; color: var(--g-grey); }
+.gstatus--offline { color: var(--g-red); }
+
+/* Thumbnails */
+.gcams .camarea { margin-top: 4px; }
+.gcams .camarea h2 { font-size: 14.5px; font-weight: 600; letter-spacing: -.005em; }
+.gcams .camarea h2 .meta { font-size: 12.5px; font-weight: 400; color: var(--g-grey); }
+.gcams .camcard { border: 1px solid var(--g-light); border-radius: 8px; box-shadow: none; }
+.gcams .camcard:hover { border-color: var(--g-black); box-shadow: none; }
+.gcams .camcard__body { padding: 10px 12px 12px; gap: 6px; font-size: 13px; }
+.gcard__tags { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+/* List */
+.gcams__table { border: 1px solid var(--g-light); border-radius: 8px; background: var(--g-white); overflow: auto; }
+.gcams__table .table { border-spacing: 0; margin: 0; width: 100%; }
+.gcams__table .table th { height: 40px; padding: 0 14px; border-bottom: 1px solid var(--g-light); background: var(--g-white); position: sticky; top: 0; z-index: 1; }
+.gcams__table .sorthead { font-size: 12px; font-weight: 500; letter-spacing: .04em; text-transform: uppercase; color: var(--g-grey); }
+.gcams__table .table th:last-child { font-size: 12px; font-weight: 500; letter-spacing: .04em; text-transform: uppercase; color: var(--g-grey); text-align: left; }
+.gcams__table .table td { padding: 10px 14px; border-bottom: 1px solid var(--g-light); font-size: 13px; background: none; box-shadow: none; border-radius: 0; }
+.gcams__table .table td strong { font-weight: 500; }
+.gcams__table .table tr.is-clickable:hover td { background: var(--g-hover); }
+
+/* Columns: department, work area, camera, then the picture with what it still needs */
+.gcams__cols { border: 1px solid var(--g-light); border-radius: 8px; background: var(--g-white); min-height: calc(100dvh - 330px); }
+.gcams .colview__col { border-right: 1px solid var(--g-light); }
+.gcams .colview__head { border-bottom: 1px solid var(--g-light); font-size: 11px; font-weight: 500; letter-spacing: .05em; color: var(--g-grey); }
+.gcams .colview__item { font-size: 13.5px; min-height: 34px; }
+.gcams .colview__item:hover { background: var(--g-hover); }
+.gcams .colview__item.is-sel { background: var(--g-black); color: var(--g-white); }
+.gcams .colview__preview { background: var(--g-canvas); gap: 10px; }
+.gcams .colview__title { font-size: 15px; }
+.gcams .colview__title strong { font-weight: 600; }
+.gcams .colview__kv dt { color: var(--g-grey); font-weight: 400; }
+.gcams .colview__preview .gbtn { align-self: flex-start; }
+
+@media (max-width: 760px) {
+  .gcams__head .ovhead__actions { width: 100%; margin-left: 0; flex-wrap: wrap; }
+  .gcams__head .gbtn--primary { flex: 1 1 100%; justify-content: center; }
+  .gcams__search, .gcams .msel { flex: 1 1 100%; }
+  .gcams__views { display: none; }
+}
+
+/* ── Camera set-up ────────────────────────────────────────────────────────────────────────────── */
+.page.gcs { display: flex; flex-direction: column; gap: 16px; padding-bottom: 96px; max-width: 1280px; }
+.gcs__head { display: flex; align-items: flex-end; gap: 12px 20px; flex-wrap: wrap; }
+.gcs__back { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 4px; font-size: 13px; color: var(--g-grey); text-decoration: none; }
+.gcs__back:hover { color: var(--g-black); text-decoration: none; }
+.gcs__title { display: flex; flex-direction: column; min-width: 0; }
+.gcs__title p { margin-top: 4px; font-size: 13.5px; color: var(--g-grey); }
+.gcs__head .ovhead__actions { margin-left: auto; }
+
+/* Steps: number or tick, name, and what is done in it */
+.gsteps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--g-light); border-radius: 8px; background: var(--g-white); overflow: hidden; }
+.gsteps button { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 12px 16px; border: 0; border-left: 1px solid var(--g-light); background: none; font: inherit; text-align: left; cursor: pointer; }
+.gsteps button:first-child { border-left: 0; }
+.gsteps button:disabled { cursor: not-allowed; opacity: .5; }
+.gsteps button:hover:not(:disabled) { background: var(--g-hover); }
+.gsteps button[aria-selected='true'] { box-shadow: inset 0 -2px 0 var(--g-black); }
+.gsteps__n { flex: 0 0 auto; width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--g-light); font-family: var(--g-mono); font-size: 12px; color: var(--g-grey); }
+.gsteps button[aria-selected='true'] .gsteps__n { border-color: var(--g-black); color: var(--g-black); }
+.gsteps__n.is-done { background: var(--g-black); border-color: var(--g-black); color: var(--g-white); }
+.gsteps__text { display: flex; flex-direction: column; min-width: 0; }
+.gsteps__text strong { font-size: 13.5px; font-weight: 500; color: var(--g-black); }
+.gsteps__text span { font-size: 12px; color: var(--g-grey); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Cards and fields inside the set-up */
+.gcs .card { border: 1px solid var(--g-light); border-radius: 8px; box-shadow: none; }
+.gcs .card__head { min-height: 48px; padding: 0 18px; border-bottom: 1px solid var(--g-light); }
+.gcs .card__head h2 { font-size: 14px; font-weight: 600; }
+.gcs .camedit { gap: 16px; }
+.gcs .camedit > .card--pad.stack { padding: 20px; gap: 0; }
+.gform__section { display: flex; flex-direction: column; gap: 14px; padding: 18px 0; border-top: 1px solid var(--g-light); }
+.gform__section:first-child { padding-top: 0; border-top: 0; }
+.gform__section:last-child { padding-bottom: 0; }
+.gform__section h3 { font-size: 12px; font-weight: 500; letter-spacing: .05em; text-transform: uppercase; color: var(--g-grey); }
+.gcs .grid-2 { gap: 14px; }
+.gcs .field { gap: 6px; }
+.gcs .field label, .gcs .field__label { font-size: 12.5px; font-weight: 500; color: var(--g-black); text-transform: none; }
+.gcs .field__hint { font-size: 12px; line-height: 1.5; color: var(--g-grey); }
+.gcs .input { border-color: var(--g-light); border-radius: 6px; font-size: 14px; }
+/* Fields keep the label inside the box (like Work area and Department), so all fields line up at the same height */
+.gcs .field:has(> label + .input:not(.input--sm)) > label { font-size: 12.5px; font-weight: 500; top: 8px; }
+.gcs .field:has(> label + .input:not(.input--sm)) > .input:not(.input--sm) { height: 56px; padding-top: 20px; }
+.gcs .field:has(> label + .input) > .field__hint { margin-top: 6px; }
+.gcs .input.mono::placeholder { font-family: var(--g-font); font-size: 14px; }
+.gcs .input:focus { border-color: var(--g-black); box-shadow: none; }
+.gcs .input[readonly] { background: var(--g-canvas); color: var(--g-grey); }
+.gcs .msel__box { border-color: var(--g-light); border-radius: 6px; }
+.gcs .seg { display: flex; width: 100%; }
+.gcs .seg button { flex: 1 1 0; justify-content: center; height: 34px; text-transform: none; letter-spacing: 0; font-weight: 500; }
+.gcs .seg button[aria-pressed='true'] { background: var(--g-white); color: var(--g-black); box-shadow: 0 1px 2px color-mix(in srgb, var(--g-black) 12%, transparent); }
+.gcs .seg--sm { width: auto; display: inline-flex; }
+.gcs .seg--sm button { height: 28px; padding: 0 10px; font-size: 12.5px; }
+.gconn { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.gconn__ok { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--g-black); }
+.gconn__ok svg { color: var(--g-black); }
+.gconn__fail { font-size: 13px; color: var(--g-red); }
+.gcs__warn { padding: 10px 12px; border-radius: 6px; background: var(--g-canvas); font-size: 12.5px; color: var(--g-grey); }
+.gcs details.gadv summary { cursor: pointer; font-size: 12.5px; font-weight: 500; color: var(--g-grey); list-style: none; }
+.gcs details.gadv summary::-webkit-details-marker { display: none; }
+.gcs details.gadv summary::before { content: '+ '; }
+.gcs details.gadv[open] summary::before { content: '− '; }
+.gcs details.gadv > .field { margin-top: 10px; }
+.gcs .camedit__placeholder { border: 1px dashed var(--g-light); background: var(--g-white); border-radius: 8px; color: var(--g-grey); font-size: 13px; }
+/* The picture column is as tall as the form beside it: the empty box fills it, a connected picture sits at its top */
+.gcs .camedit:not(.camedit--zones) { align-items: stretch; }
+.gcs .camedit:not(.camedit--zones) > .stack { display: flex; flex-direction: column; gap: 10px; }
+.gcs .camedit:not(.camedit--zones) > .stack > .camedit__placeholder { flex: 1 1 auto; aspect-ratio: auto; min-height: 240px; }
+.gcs .camedit > .stack > .camview { border-radius: 8px; }
+.gcs .camedit > .stack > .meta { font-size: 12.5px; color: var(--g-grey); }
+.gcs .zonerow { border-color: var(--g-light); border-radius: 6px; }
+.gcs .zonerow.is-sel { border-color: var(--g-black); background: var(--g-canvas); }
+.gcs .zedit__tools { border-color: var(--g-light); border-radius: 6px; }
+.gcs .zedit__tools > button[aria-pressed='true'] { background: var(--g-black); }
+.gcs .table.camsetup__table th { font-size: 12px; font-weight: 500; letter-spacing: .04em; text-transform: uppercase; color: var(--g-grey); }
+.gcs .table.camsetup__table td { font-size: 13px; }
+.gcs .table.camsetup__table td strong { font-weight: 500; }
+.gcs .chip--good { background: var(--g-canvas); color: var(--g-black); border-color: var(--g-light); }
+.gcs .btn--sm { min-height: 30px; height: 30px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--g-light); background: var(--g-white); color: var(--g-black); font-size: 12.5px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+.gcs .btn--sm:hover { border-color: var(--g-black); background: var(--g-white); color: var(--g-black); }
+.gcs .qact__btn { font-size: 13px; text-transform: none; }
+
+/* The bar at the bottom: always says what is saved, and the one next step */
+.gcs__foot { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: flex; align-items: center; gap: 10px; padding: 12px max(24px, calc((100vw - 1280px) / 2 + 24px)); border-top: 1px solid var(--g-light); background: var(--g-white); }
+.gcs__saved { display: inline-flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; color: var(--g-grey); }
+.gcs__saved i { width: 8px; height: 8px; border-radius: 50%; background: var(--g-grey-2); flex: 0 0 auto; }
+.gcs__saved.is-dirty { color: var(--g-black); }
+.gcs__saved.is-dirty i { background: var(--g-red); }
+.gcs__saved.is-clean i { background: var(--g-black); }
+.gcs__foot .gbtn { height: 38px; }
+.gcs__why { font-size: 12.5px; color: var(--g-grey); }
+body:has(.gcs) .apop { bottom: 84px; }
+@media (max-width: 760px) {
+  .page.gcs { padding-bottom: 150px; }
+  .gsteps button { flex-direction: column; gap: 4px; padding: 10px 4px; text-align: center; }
+  .gsteps__text { align-items: center; }
+  .gsteps__text strong { font-size: 12.5px; }
+  .gsteps__text span { display: none; }
+  body:has(.gcs) .apop { display: none; }
+  .gcs__foot { bottom: calc(67px + env(safe-area-inset-bottom)); padding: 10px 14px; flex-wrap: wrap; }
+  .gcs__saved { flex: 1 1 100%; }
+  .gcs__foot .spacer { display: none; }
+  .gcs__foot .gbtn { flex: 1 1 auto; justify-content: center; }
+  .gcs__why { display: none; }
+}
+
+/* Zone tools: one even line. Buttons and the "what the area is for" picker share one height and sit centred, with the
+   same space above and below them. */
+.gcs .zedit__tools { align-items: center; gap: 6px; padding: 6px; background: var(--g-white); }
+.gcs .zedit__tools > button { height: 36px; padding: 0 12px; border-radius: 6px; font-size: 13.5px; color: var(--g-grey); }
+.gcs .zedit__tools > button:hover:not([aria-pressed='true']) { background: var(--g-hover); color: var(--g-black); }
+.gcs .zedit__tools > button[aria-pressed='true'] { color: var(--g-white); }
+.gcs .zedit__tools > button:focus:not(:focus-visible) { outline: none; }
+.gcs .zedit__tools .msel { margin: 0; min-width: 220px; flex: 0 1 240px; }
+.gcs .zedit__tools .msel__box { height: 36px; border-radius: 6px; }
+.gcs .zedit__tools .msel__row { top: 8px; }
+.gcs .zedit__tools .msel__arrow { top: 15px; }
+.gcs .zedit__tools .msel__value, .gcs .zedit__tools .msel__search { font-size: 13.5px; }

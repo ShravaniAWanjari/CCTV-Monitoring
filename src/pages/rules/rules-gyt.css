@@ -1,0 +1,149 @@
+/* GYT redesign of the Rules tab: the rule list and the rule set-up. The header, tools box, tabs, search and table frame
+   come from the Cameras pieces (cameras-gyt.css), the criticality toggles from Alerts, buttons from overview-gyt.css. */
+
+body:has(.grules), body:has(.grule) { background: var(--g-canvas); }
+.grules .mono, .grule .mono { font-family: var(--g-mono); font-variant-numeric: tabular-nums; }
+.grules .msel { flex: 0 1 200px; }
+.grules .gbtn .mono { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--g-white); color: var(--g-black); font-size: 11px; line-height: 18px; text-align: center; }
+
+/* The live switch, in black and white */
+.grules .switch, .grule .switch { gap: 8px; font-size: 13px; font-weight: 500; text-transform: none; }
+.grules .switch__track { width: 34px; height: 20px; }
+.grules .switch__track::after { top: 3px; left: 3px; width: 14px; height: 14px; }
+.grules .switch input:checked + .switch__track { background: var(--g-black); }
+.grules .switch input:checked + .switch__track::after { transform: translateX(14px); }
+.grules .switch input:disabled + .switch__track { opacity: .5; }
+.grules__mode { color: var(--g-grey); font-weight: 500; }
+.grules__mode.is-live { color: var(--g-black); }
+
+/* The list */
+.grules__table .table tbody tr { box-shadow: none; }
+.grules__table .table td { vertical-align: middle; }
+.grules__table .table th, .grules__table .table td { padding-left: 12px; padding-right: 12px; }
+.grules__table .table th:first-child, .grules__table .table td:first-child { padding-left: 16px; }
+/* The rule column takes the room left over and cuts its sentence short; the others keep to their content */
+.grules__rule { width: 100%; max-width: 0; min-width: 240px; }
+.grules__name { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.grules__name a, .grules__name strong { color: var(--g-black); font-weight: 500; font-size: 13.5px; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grules__name a:hover { text-decoration: underline; }
+.grules__id { flex: 0 0 auto; font-size: 12px; color: var(--g-grey); }
+.grules__what { display: block; margin-top: 2px; font-size: 12.5px; color: var(--g-grey); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grules__table th.grules__num, .grules__table td.grules__num { white-space: nowrap; }
+.grules__table td.grules__num { font-size: 13px; }
+.grules__areas { display: block; max-width: 150px; font-size: 12px; color: var(--g-grey); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grules__none { color: var(--g-red); font-weight: 500; }
+.grules__zero { color: var(--g-grey-2); }
+.grules__table td.grules__num a { color: var(--g-black); font-weight: 500; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--g-light); }
+.grules__table td.grules__num a:hover { text-decoration-color: var(--g-black); }
+.grules__table .prio { box-sizing: border-box; justify-content: center; height: 20px; width: 34px; padding: 0 4px; font-size: 11px; border-radius: 3px; }
+.grules__table .prio svg { display: none; }
+.grules__go { width: 28px; padding-left: 0 !important; color: var(--g-grey-2); }
+.grules__table tr.is-clickable { cursor: pointer; }
+.grules__table tr.is-clickable:hover .grules__go { color: var(--g-black); }
+
+/* More filters panel */
+.qset.grules__panel { background: var(--g-white); box-shadow: -8px 0 24px color-mix(in srgb, var(--g-black) 12%, transparent); font-family: var(--g-font); }
+.grules__panel .qset__title { font-size: 18px; font-weight: 600; line-height: 28px; }
+.grules__panel .qset__sub { font-size: 11.5px; font-weight: 500; letter-spacing: .05em; color: var(--g-grey); }
+.grules__panel .qset__group { margin-bottom: 16px; }
+.grules__panel .qset__check { font-size: 13.5px; }
+.grules__panel .qset__check input { accent-color: var(--g-black); }
+.grules__panel .qset__foot { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--g-light); }
+.grules__panel .qset__foot .gbtn { flex: 1 1 0; justify-content: center; }
+
+@media (max-width: 900px) {
+  .grules__areas, .grules__table .grules__mode { display: none; }
+}
+@media (max-width: 760px) {
+  .grules__rule { min-width: 200px; }
+}
+
+/* ── Rule set-up ─────────────────────────────────────────────────────────────────────────────── */
+.grule .ruleedit { grid-template-columns: minmax(0, 1.55fr) minmax(320px, 1fr); gap: 16px; }
+.grule .ruleform { padding: 20px; gap: 0; }
+.grule .ruleside { top: 76px; gap: 16px; }
+.grule .field { max-width: none !important; }
+.grule .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+
+/* Plain-words box: open for a new rule, folded away on an existing one */
+.gdescribe > summary { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; cursor: pointer; list-style: none; }
+.gdescribe > summary::-webkit-details-marker { display: none; }
+.gdescribe > summary h3::before { content: '+ '; }
+.gdescribe[open] > summary h3::before { content: '− '; }
+.gdescribe__opt { font-size: 12px; color: var(--g-grey); }
+.gdescribe[open] > summary { margin-bottom: 12px; }
+.gdescribe .textarea { display: block; width: 100%; min-height: 60px; border-color: var(--g-light); border-radius: 6px; font-size: 14px; resize: vertical; }
+.gdescribe .textarea:focus { border-color: var(--g-black); box-shadow: none; }
+.gdescribe__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; }
+.gdescribe__actions .gbtn { margin-right: 6px; }
+.gdescribe__or { font-size: 12.5px; color: var(--g-grey); margin-right: 2px; }
+.gdescribe__assumed { margin-top: 10px; padding: 10px 12px; border-radius: 6px; background: var(--g-canvas); font-size: 12.5px; color: var(--g-black); }
+.gdescribe__assumed strong { font-weight: 500; }
+
+/* Chips: example sentences, cameras and zones */
+.gchip { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 4px 10px; border: 1px solid var(--g-light); border-radius: 6px; background: var(--g-white); color: var(--g-black); font: inherit; font-size: 12.5px; text-align: left; cursor: pointer; }
+.gchip:hover { border-color: var(--g-grey-2); }
+.gchip[aria-pressed='true'] { background: var(--g-black); border-color: var(--g-black); color: var(--g-white); }
+
+/* A number with its unit inside the field */
+.gunit { position: relative; }
+.grule .field.gunit > label { font-size: 14px; font-weight: 600; }
+.gunit .input { padding-right: 76px; }
+.gunit__u { position: absolute; right: 14px; bottom: 18px; font-size: 13px; color: var(--g-grey); pointer-events: none; }
+
+/* Cameras and zones */
+.gwhere { display: flex; flex-direction: column; gap: 8px; }
+.gwhere__row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.gwhere__more { border-style: dashed; color: var(--g-grey); }
+.gwhere__empty { font-size: 13px; color: var(--g-red); margin-right: 4px; }
+.greal { align-self: flex-start; padding: 6px 10px; border-radius: 6px; background: var(--g-canvas); font-size: 12.5px; color: var(--g-grey); }
+.greal.is-warn { background: var(--g-red-wash); color: var(--g-red); }
+
+/* Fine-tuning */
+.grule details.gadv > summary { padding: 2px 0; }
+.grule details.gadv[open] > summary { margin-bottom: 4px; }
+.grule .steady > div { gap: 14px !important; }
+
+/* The summary beside the form: the rule in one sentence, its picture, and live or test */
+.gsum { display: flex; flex-direction: column; gap: 12px; padding: 16px; }
+.gsum__sentence { display: flex; align-items: flex-start; gap: 10px; }
+.gsum__sentence .prio { flex: 0 0 auto; height: 20px; padding: 0 6px; font-size: 11px; border-radius: 3px; }
+.gsum__sentence .prio svg { display: none; }
+.gsum__sentence p { margin: 0; font-size: 14px; line-height: 1.5; color: var(--g-black); }
+.gsum .camview { border-radius: 6px; }
+.gsum__nocam { display: flex; align-items: center; justify-content: center; aspect-ratio: 16 / 9; border: 1px dashed var(--g-light); border-radius: 6px; font-size: 12.5px; color: var(--g-grey); text-align: center; padding: 12px; }
+.gsum__mode { display: flex; flex-direction: column; gap: 6px; padding-top: 12px; border-top: 1px solid var(--g-light); }
+.gsum__h { font-size: 12px; font-weight: 500; letter-spacing: .05em; text-transform: uppercase; color: var(--g-grey); }
+.gsum__list { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.gsum__list strong { font-weight: 500; }
+.gsum__item { font-size: 12.5px; color: var(--g-grey); text-decoration: none; }
+a.gsum__item:hover { color: var(--g-black); }
+.gsum__btns { display: flex; flex-wrap: wrap; gap: 8px; }
+
+@media (max-width: 1000px) {
+  .grule .ruleedit { grid-template-columns: 1fr; }
+  .grule .ruleside { position: static; }
+}
+@media (max-width: 640px) {
+  .grule .grid-2 { grid-template-columns: 1fr; }
+}
+
+/* Phone: each rule is a small card. Name and sentence on top; cameras, alerts, criticality and the live switch below. */
+@media (max-width: 640px) {
+  .grules .ovhead__actions { width: 100%; margin-left: 0; }
+  .grules .ovhead__actions .gbtn--primary { display: inline-flex; flex: 1 1 100%; justify-content: center; }
+  .grules .gcams__search, .grules .msel { flex: 1 1 100%; }
+  .grules__table { overflow: visible; }
+  .grules__table .table, .grules__table .table tbody { display: block; }
+  .grules__table .table thead { display: none; }
+  .grules__table .table tr { display: grid; grid-template-columns: auto auto 1fr auto auto; align-items: center; column-gap: 14px; row-gap: 6px; padding: 12px 14px; border-bottom: 1px solid var(--g-light); }
+  .grules__table .table tbody tr:last-child { border-bottom: 0; }
+  .grules__table .table td { display: block; padding: 0 !important; border: 0; }
+  .grules__table .table td.grules__rule { grid-column: 1 / -1; width: auto; max-width: none; min-width: 0; }
+  .grules__table td.grules__num:nth-child(2):not(:has(.grules__none))::after { content: ' cameras'; font-size: 12px; color: var(--g-grey); }
+  .grules__table td.grules__num:nth-child(3)::after { content: ' alerts'; font-size: 12px; color: var(--g-grey); }
+  .grules__table .grules__areas { display: none; }
+  .grules__table .grules__none::before { content: 'Cameras: '; }
+  .grules__go { display: none !important; }
+}
+.grules__mode { white-space: nowrap; }
