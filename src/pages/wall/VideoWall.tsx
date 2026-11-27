@@ -275,7 +275,7 @@ export function VideoWall() {
             </button>
           )}
           <button type="button" className={`gbtn gbtn--icon${settings && !draft ? ' is-on' : ''}`} onClick={() => (draft ? (setDraft(null), setSettings(true)) : setSettings((v) => !v))} title="Wall settings" aria-label="Wall settings" aria-pressed={settings && !draft}>
-            <Icon name="config" size={18} />
+            <Icon name="settings" size={18} />
           </button>
           <CastMenu wallId={saved.id} />
           <button type="button" className="gbtn gbtn--icon" onClick={() => window.open(`#/screen/${saved.id}`, `gyt-wall-${saved.id}`, 'popup,width=1600,height=900')} title="Open this wall in its own window, for a second monitor" aria-label="Pop out">

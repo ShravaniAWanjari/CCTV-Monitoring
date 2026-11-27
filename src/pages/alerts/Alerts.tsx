@@ -139,7 +139,7 @@ export function Alerts() {
         <div className="ovhead__actions">
           {canConfigure(me) && (
             <button type="button" className="gbtn gbtn--icon" onClick={() => nav('/configuration/alerts')} aria-label="Alert settings" title="Alert settings: who is told, how, and when alerts escalate">
-              <Icon name="config" size={18} />
+              <Icon name="settings" size={18} />
             </button>
           )}
         </div>
