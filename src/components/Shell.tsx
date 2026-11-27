@@ -20,7 +20,7 @@ const TABS: Tab[] = [
   { to: '/alerts', label: 'Alerts', icon: 'bell', phone: true },
   { to: '/cameras', label: 'Cameras', icon: 'cctv', phone: true },
   { to: '/rules', label: 'Rules', icon: 'rule' },
-  { to: '/configuration', label: 'Configuration', short: 'Set-up', icon: 'config', admin: true },
+  { to: '/configuration', label: 'Configuration', short: 'Set-up', icon: 'wrench', admin: true },
 ];
 
 const isOn = (t: Tab, pathname: string) => (t.end ? pathname === t.to : pathname === t.to || pathname.startsWith(`${t.to}/`));
