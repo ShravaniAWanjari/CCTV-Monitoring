@@ -245,3 +245,7 @@ body:has(.gyt) .scrim .btn--icon { width: 34px; padding: 0; }
 body:has(.gyt) .scrim .switch { font-size: 13.5px; font-weight: 500; }
 body:has(.gyt) .scrim .kv dt { color: var(--g-grey); font-weight: 400; }
 body:has(.gyt) .scrim .mono { font-family: var(--g-mono); }
+
+/* State tags on camera pictures: readable on any picture, dark or light. Degraded is white with black text; offline is red. */
+.gyt .camview__degraded, body:has(.gyt) .camview__degraded { top: 8px; left: 8px; padding: 2px 7px; border-radius: 4px; background: var(--g-white); color: var(--g-black); font-size: 11px; font-weight: 600; letter-spacing: .01em; box-shadow: 0 1px 3px color-mix(in srgb, var(--g-black) 35%, transparent); }
+.gyt .camview__offline, body:has(.gyt) .camview__offline { background: var(--g-red); color: var(--g-white); }

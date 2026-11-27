@@ -852,6 +852,7 @@ export function CameraView({
         </div>
       )}
       {cam.status === 'degraded' && <span className="camview__degraded">Degraded · low light</span>}
+      {cam.status === 'offline' && !cam.source && <span className="camview__degraded camview__offline">Offline · no signal</span>}
       {children}
     </div>
   );
